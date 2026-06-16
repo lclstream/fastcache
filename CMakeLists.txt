@@ -21,3 +21,16 @@ target_link_libraries(lclstream-fastcache
     nlohmann_json::nlohmann_json
     Boost::lockfree
 )
+
+# Single-process diagnostic: DRAM-bandwidth vs contention probe.
+add_executable(fastcache-bench
+    bench/bench.cpp
+)
+
+target_link_libraries(fastcache-bench
+    PRIVATE
+    libzmq
+)
+
+find_package(Threads REQUIRED)
+target_link_libraries(fastcache-bench PRIVATE Threads::Threads)
