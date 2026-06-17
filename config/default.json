@@ -1,8 +1,10 @@
 {
   "inurl": "tcp://134.79.23.43:5001",
-  "outurl": "tcp://128.55.205.21:12345",
-  "num_workers": 32,
-  "io_threads": 32,
-  "hwm": 5
+  "outurl": "tcp://134.79.23.43:5556",
+  "type": 4,
+  "helper_threads": 0,
+  "num_workers": 1,
+  "io_threads": 16,
+  "hwm": 10,
+  "verbose": false
 }
-

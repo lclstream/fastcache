@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <zmq.h>
+#include <unistd.h>
 #include "cacheserver.h"
 #include "config.h"
 
@@ -19,9 +20,12 @@ int main(int argc, char* argv[]) {
     } else {
         fname = argv[1];
     }
+
     load_config(fname, cfg);
 
     CacheServer serv(cfg);
+
+    usleep(1000);
 
     serv.Run();
 
