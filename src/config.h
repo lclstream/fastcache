@@ -15,7 +15,6 @@ struct Config
     std::string outurl;
     std::string workerurl = "inproc://worker";
     int helper_threads;
-    int num_workers;
     int io_threads;
     int hwm;
     int type;
