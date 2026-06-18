@@ -120,7 +120,8 @@ int CacheServer::send_receive(void* incoming, void* outgoing) {
     return 0;
 }
 
-void CacheServer::cpulock(int num) {
+void CacheServer::cpulock([[maybe_unused]] int num) {
+#ifdef __linux__
     cpu_set_t set;
     CPU_ZERO(&set);
     CPU_SET(num, &set);
@@ -128,6 +129,9 @@ void CacheServer::cpulock(int num) {
     if (res){
         std::cout << "Setting cpu affinity failed " << strerror(res) << std::endl;
     }
+#else
+    std::cout << "cpulock: CPU affinity not supported on this platform, skipping." << std::endl;
+#endif
 }
 
 void* CacheServer::proxy_worker(void* selfptr) {
