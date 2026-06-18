@@ -13,6 +13,7 @@ struct Config
 {
     std::string inurl;
     std::string outurl;
+    std::string workerurl = "inproc://worker";
     int helper_threads;
     int num_workers;
     int io_threads;
