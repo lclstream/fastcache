@@ -1,0 +1,40 @@
+# Build stage: compile the C++ binary with vcpkg
+FROM debian:bookworm-slim AS builder
+
+# Install the build toolchain and vcpkg bootstrap dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    ninja-build \
+    pkg-config \
+    git \
+    curl \
+    zip \
+    unzip \
+    tar \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install vcpkg (the manifest pins the registry baseline)
+ENV VCPKG_ROOT=/opt/vcpkg
+RUN git clone https://github.com/microsoft/vcpkg "$VCPKG_ROOT" \
+    && "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+ENV PATH="$VCPKG_ROOT:$PATH"
+
+WORKDIR /app
+COPY . /app
+
+# Configure and build (Release) using the default preset
+RUN cmake --preset default \
+    && cmake --build --preset default
+
+# Runtime stage: minimal image with just the binary and default config
+FROM debian:bookworm-slim
+
+WORKDIR /app
+
+COPY --from=builder /app/build/lclstream-fastcache /usr/local/bin/lclstream-fastcache
+COPY config/default.json /etc/fastcache/default.json
+
+ENTRYPOINT ["lclstream-fastcache"]
+CMD ["/etc/fastcache/default.json"]
