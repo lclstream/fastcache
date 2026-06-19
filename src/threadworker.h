@@ -7,6 +7,14 @@
 #include <boost/lockfree/spsc_queue.hpp>
 #include <zmq.h>
 
+
+// TODO: make this configurable
+static constexpr size_t LOCKFREE_QUEUE_CAPACITY = 25;
+
+using MessageQueue =
+    boost::lockfree::spsc_queue<zmq_msg_t*,
+                                boost::lockfree::capacity<LOCKFREE_QUEUE_CAPACITY>>;
+
 struct SocketConfig {
     int type; // (push/pull)
     int hwm;
@@ -54,13 +62,13 @@ public:
     LockfreeWorker(
         void* ctx,
         const Config& cfg,
-        boost::lockfree::spsc_queue<zmq_msg_t*, boost::lockfree::capacity<25>>& queue,
+        MessageQueue& queue,
         bool sender
     ) : ThreadWorker(ctx, cfg), sender(sender), queue(queue) {};
     void run() override;
 private:
     bool sender;
-    boost::lockfree::spsc_queue<zmq_msg_t*, boost::lockfree::capacity<25>>& queue;
+    MessageQueue& queue;
 };
 
 class ConnectionTesterWorker : public ThreadWorker {

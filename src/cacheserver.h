@@ -26,7 +26,7 @@ private:
     std::vector<std::unique_ptr<ThreadWorker>> workers;
     std::vector<std::thread> threads;
     bool verbose = false;
-    boost::lockfree::spsc_queue<zmq_msg_t*, boost::lockfree::capacity<25>> queue;
+    MessageQueue queue;
 
 };
 
