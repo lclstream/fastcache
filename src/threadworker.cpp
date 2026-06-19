@@ -120,6 +120,7 @@ void LockfreeWorker::run() {
             }
             int rc = zmq_msg_send(msg, socket, 0);
             zmq_msg_close(msg);
+            delete msg;
             if (rc < 0) {
                 break;
             }
