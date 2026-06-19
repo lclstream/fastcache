@@ -1,9 +1,5 @@
-#include <cstdio>
 #include <cstdlib>
-//#include <fstream>
-#include <iostream>
 #include <string>
-#include <vector>
 #include <zmq.h>
 #include <unistd.h>
 #include "cacheserver.h"
