@@ -1,0 +1,13 @@
+{
+  "dependencies": [
+    "boost-lockfree",
+    "cppzmq",
+    "nlohmann-json"
+  ],
+  "overrides": [
+    { "name": "zeromq", "version": "4.3.5", "port-version": 3 },
+    { "name": "cppzmq", "version": "4.11.0" },
+    { "name": "nlohmann-json", "version": "3.12.0", "port-version": 2 },
+    { "name": "boost-lockfree", "version": "1.91.0" }
+  ]
+}
