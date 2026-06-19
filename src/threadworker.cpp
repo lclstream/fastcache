@@ -1,5 +1,6 @@
 #include <iostream>
 #include <thread>
+#include <sys/syscall.h>
 #include <zmq.h>
 #include "threadworker.h"
 
@@ -43,7 +44,7 @@ void ProxyWorker::run() {
     void *incoming = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
     void *outgoing = create_socket(zmq_ctx, {ZMQ_PUSH, cfg.hwm, cfg.outurl, true});
 
-    std::cout << "Starting simple forward with 1 thread. " << std::endl;
+    std::cout << "Starting simple forward with 1 thread. PID" << std::this_thread::get_id() << std::endl;
 
     int prob = 0;
 
@@ -64,9 +65,11 @@ void InprocWorker::run() {
     void *outgoing;
 
     if (!sender) {
+        std::cout << "Starting Inproc forward. Receiver PID: " << std::this_thread::get_id() << std::endl;
         incoming = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
         outgoing = create_socket(zmq_ctx, {ZMQ_PUSH, cfg.hwm, cfg.workerurl, true});
     } else {
+        std::cout << "Starting Inproc forward. Sender PID: " << std::this_thread::get_id() << std::endl;
         incoming = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.workerurl, false});
         if (bindoutgoing) {
             outgoing = create_socket(zmq_ctx, {ZMQ_PUSH, cfg.hwm, cfg.outurl, true});
@@ -85,8 +88,9 @@ void InprocWorker::run() {
 
 void LockfreeWorker::run() {
     void* socket;
-    // bool flip = true;
+    pid_t tid = syscall(SYS_gettid);
     if (!sender) {
+        std::cout << "Starting Lockfree forward. Receiver TID: " << tid << std::endl;
         socket = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
         while (1) {
             zmq_msg_t msg;
@@ -95,18 +99,24 @@ void LockfreeWorker::run() {
             int rc = zmq_msg_recv(&msg, socket, 0);
             if (rc < 0) {
                 zmq_msg_close(&msg);
+                int err = zmq_errno();
+                if (err == EAGAIN) {
+                    continue;
+                } else {
+                    std::cerr << "Error, closing receiver thread." << std::endl;
+                }
                 break;
             }
+
             zmq_msg_t* qmsg = new zmq_msg_t();
             zmq_msg_init(qmsg);
             zmq_msg_move(qmsg, &msg); 
-
             while (!queue.push(qmsg)) {
                 std::this_thread::yield();
             }
-            zmq_msg_close(&msg); 
         }
     } else {
+        std::cout << "Starting Lockfree forward. Sender TID: " << tid << std::endl;
         socket = create_socket(zmq_ctx, {ZMQ_PUSH, cfg.hwm, cfg.outurl, true});
         while (1) {
             bool got_msg = false;

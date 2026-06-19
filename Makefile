@@ -5,7 +5,7 @@ LIBS := $(PREFIX)/lib
 INC := $(PREFIX)/include
 
 CXX := g++
-CXXFLAGS := -std=c++20 -Wall -Wextra -O2 -I$(INC) -g
+CXXFLAGS := -std=c++20 -Wall -Wextra -O3 -I$(INC) -march=native
 
 LDFLAGS := -L$(LIBS)
 LDLIBS := -lzmq -pthread
