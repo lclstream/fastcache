@@ -1,0 +1,60 @@
+[project]
+name = "cache_supervisor"
+version = "0.1.0"
+description = "LCLStream Fastcache Supervisor"
+readme = "README.md"
+authors = [
+    { name = "Sam Welborn", email = "swelborn@slac.stanford.edu" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "fastapi>=0.138.0",
+    "fastapi-jwks>=2.0.2",
+    "greenlet>=3.5.2",
+    "psutil>=7.2.2",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.2",
+    "pyjwt>=2.13.0",
+    "sqlalchemy>=2.0.51",
+    "uvicorn[standard]>=0.49.0",
+]
+
+[project.scripts]
+supervisor = "cache_supervisor.main:main"
+
+[build-system]
+requires = ["uv_build>=0.11.23,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.18",
+    "types-psutil>=7.2.2.20260518",
+]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort (import ordering)
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "SIM", # flake8-simplify
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["cache_supervisor"]
+combine-as-imports = true
+
+[tool.pyrefly]
+project-includes = [
+    "**/*.py*",
+    "**/*.ipynb",
+]
