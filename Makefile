@@ -16,7 +16,7 @@ BUILD_DIR := build
 SRCS := $(wildcard $(SRC_DIR)/*.cpp)
 OBJS := $(SRCS:src/%.cpp=build/%.o)
 
-TARGET := fastcache
+TARGET := lclstream-fastcache
 
 all: $(TARGET)
 
