@@ -4,6 +4,7 @@
 #include <zmq.h>
 #include "threadworker.h"
 
+
 void* ThreadWorker::create_socket(void* ctx, const SocketConfig& socketcfg) {
     void* socket = zmq_socket(ctx, socketcfg.type);
 
@@ -92,6 +93,8 @@ void LockfreeWorker::run() {
     if (!sender) {
         std::cout << "Starting Lockfree forward. Receiver TID: " << tid << std::endl;
         socket = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
+        int timeout = 5000;
+        zmq_setsockopt(socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
         while (1) {
             zmq_msg_t msg;
             zmq_msg_init(&msg);
@@ -101,7 +104,9 @@ void LockfreeWorker::run() {
                 zmq_msg_close(&msg);
                 int err = zmq_errno();
                 if (err == EAGAIN) {
-                    continue;
+                    std::cout << "No messages for 5 seconds. Exiting." << std::endl;
+                    shutdown.store(true, std::memory_order_release);
+                    break;
                 } else {
                     std::cerr << "Error, closing receiver thread." << std::endl;
                 }
@@ -119,27 +124,30 @@ void LockfreeWorker::run() {
         std::cout << "Starting Lockfree forward. Sender TID: " << tid << std::endl;
         socket = create_socket(zmq_ctx, {ZMQ_PUSH, cfg.hwm, cfg.outurl, true});
         while (1) {
-            bool got_msg = false;
             zmq_msg_t* msg;
             if (queue.pop(msg)) {
-                got_msg = true;
-            }
-            if (!got_msg) {
-                std::this_thread::yield(); 
+                int rc = zmq_msg_send(msg, socket, 0);
+                zmq_msg_close(msg);
+                delete msg;
+                if (rc < 0) {
+                    break;
+                }
                 continue;
             }
-            int rc = zmq_msg_send(msg, socket, 0);
-            zmq_msg_close(msg);
-            delete msg;
-            if (rc < 0) {
+            if (shutdown.load(std::memory_order_acquire) && queue.read_available() == 0) {
                 break;
             }
+            std::this_thread::yield();
         }
     }
     zmq_close(socket);
 }
 
 void ConnectionTesterWorker::run() {
+
+    //void* socket = create_socket(zmq_ctx, {testincoming ? ZMQ_PULL:ZMQ_PUSH,
+    //        cfg.hwm, testincoming ? cfg.inurl:cfg.outurl, true});
+
     void* socket = create_socket(zmq_ctx, {ZMQ_PUSH, cfg.hwm, cfg.outurl, true});
 
     const size_t size = 30ULL * 1024 * 1024;
@@ -148,7 +156,7 @@ void ConnectionTesterWorker::run() {
         buffer[i] = static_cast<uint8_t>(i);
     }
 
-    while(true) {
+    while (1) {
         zmq_msg_t msg;
         zmq_msg_init_data(
             &msg,

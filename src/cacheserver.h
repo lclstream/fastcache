@@ -10,6 +10,7 @@
 #include "threadworker.h"
 #include <boost/lockfree/spsc_queue.hpp>
 
+
 class CacheServer {
 
 public:
@@ -26,8 +27,8 @@ private:
     std::vector<std::unique_ptr<ThreadWorker>> workers;
     std::vector<std::thread> threads;
     bool verbose = false;
+    std::atomic<bool> shutdown{false};
     MessageQueue queue;
-
 };
 
 #endif

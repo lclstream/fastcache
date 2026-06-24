@@ -6,5 +6,5 @@
   "num_workers": 1,
   "io_threads": 16,
   "hwm": 10,
-  "verbose": false
+  "verbose": true
 }

@@ -16,6 +16,7 @@ CacheServer::CacheServer(Config &config)
 }
 
 CacheServer::~CacheServer() {
+    std::cout << "Shutting down all threads. " << std::endl;
     for (auto& thread: threads) {
         if (thread.joinable())
             thread.join();
@@ -36,7 +37,7 @@ void CacheServer::Run() {
     }
 
     if (cfg.verbose && cfg.type == 4) {
-        while(true) {
+        while (!shutdown.load(std::memory_order_acquire)) {
             int num = queue.read_available();
             if (num > 1) {
                 std::cout << "Elements in queue: " << num << std::endl;
@@ -68,15 +69,16 @@ std::vector<std::unique_ptr<ThreadWorker>> CacheServer::create(Config& cfg, void
             }
             break;
         }
-        case 4:
-            // lock free queue
-            workerlist.push_back(std::make_unique<LockfreeWorker>(zmq_ctx, cfg, queue, false)); // receiver
-            workerlist.push_back(std::make_unique<LockfreeWorker>(zmq_ctx, cfg, queue, true)); // sender
+        case 4: // lock free queue
+            // receiver:
+            workerlist.push_back(std::make_unique<LockfreeWorker>(zmq_ctx, cfg, queue, false, shutdown));
+            // sender
+            workerlist.push_back(std::make_unique<LockfreeWorker>(zmq_ctx, cfg, queue, true, shutdown));
             break;
         case 5:
             // placeholder for request handler
             break;
-        case 6: 
+        case 6:  // test connection
             workerlist.push_back(std::make_unique<ConnectionTesterWorker>(zmq_ctx, cfg));
             break;
         default:

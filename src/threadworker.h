@@ -15,6 +15,8 @@ using MessageQueue =
     boost::lockfree::spsc_queue<zmq_msg_t*,
                                 boost::lockfree::capacity<LOCKFREE_QUEUE_CAPACITY>>;
 
+using MessageQueue = boost::lockfree::spsc_queue<zmq_msg_t*, boost::lockfree::capacity<100>>;
+
 struct SocketConfig {
     int type; // (push/pull)
     int hwm;
@@ -63,9 +65,12 @@ public:
         void* ctx,
         const Config& cfg,
         MessageQueue& queue,
-        bool sender
-    ) : ThreadWorker(ctx, cfg), sender(sender), queue(queue) {};
+        bool sender,
+        std::atomic<bool>& shutdown
+    ) : ThreadWorker(ctx, cfg), shutdown(shutdown), sender(sender), queue(queue) {};
     void run() override;
+protected:
+    std::atomic<bool>& shutdown;
 private:
     bool sender;
     MessageQueue& queue;
