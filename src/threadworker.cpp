@@ -95,6 +95,7 @@ void LockfreeWorker::run() {
         socket = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
         int timeout = 5000;
         zmq_setsockopt(socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
+        bool started_work = false;
         while (1) {
             zmq_msg_t msg;
             zmq_msg_init(&msg);
@@ -104,15 +105,15 @@ void LockfreeWorker::run() {
                 zmq_msg_close(&msg);
                 int err = zmq_errno();
                 if (err == EAGAIN) {
+                    if (!started_work) continue;
                     std::cout << "No messages for 5 seconds. Exiting." << std::endl;
-                    shutdown.store(true, std::memory_order_release);
-                    break;
                 } else {
-                    std::cerr << "Error, closing receiver thread." << std::endl;
+                    std::cerr << "Error, " << zmq_strerror(err) << " closing threads." << std::endl;
                 }
+                shutdown.store(true, std::memory_order_release);
                 break;
             }
-
+            started_work = true;
             zmq_msg_t* qmsg = new zmq_msg_t();
             zmq_msg_init(qmsg);
             zmq_msg_move(qmsg, &msg); 
