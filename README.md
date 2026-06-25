@@ -17,7 +17,7 @@ cmake --build --preset default
 ## Run
 
 ```sh
-./build/fastcache <config>    (default uses: config/default.json)
+./build/lclstream-fastcache <config>    # default: config/default.json
 ```
 
 Config keys: `inurl`, `outurl`, `num_workers`, `io_threads`, `hwm`.
