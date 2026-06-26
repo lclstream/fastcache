@@ -12,6 +12,9 @@ CacheServer::CacheServer(Config &config)
     std::cout << "Trying to use " << cfg.helper_threads << " helper_threads." << std::endl;
     std::cout << "IN URL: " << cfg.inurl << " OUT URL: " << cfg.outurl << std::endl;
     std::cout << "Type: " << cfg.type << "." << std::endl;
+    if (cfg.timeout > 0) {
+        std::cout << "Timeout: " << cfg.timeout << " ms." << std::endl;
+    }
     std::cout << "Verbose: " << cfg.verbose << "." << std::endl;
 }
 
@@ -64,7 +67,7 @@ std::vector<std::unique_ptr<ThreadWorker>> CacheServer::create(Config& cfg, void
             }
             // receiver worker first! Inproc bind has to happen first
             workerlist.push_back(std::make_unique<InprocWorker>(zmq_ctx, cfg, false, bindoutgoing));
-            for (int i=0; i<cfg.helper_threads+1; i++) {
+            for (ssize_t i=0; i<cfg.helper_threads+1; i++) {
                 workerlist.push_back(std::make_unique<InprocWorker>(zmq_ctx, cfg, true, bindoutgoing));
             }
             break;

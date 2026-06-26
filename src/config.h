@@ -14,10 +14,11 @@ struct Config
     std::string inurl;
     std::string outurl;
     std::string workerurl = "inproc://worker";
-    int helper_threads;
+    int type;
+    unsigned helper_threads;
     int io_threads;
     int hwm;
-    int type;
+    int timeout;
     bool verbose;
 };
 
