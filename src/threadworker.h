@@ -60,13 +60,17 @@ public:
         MessageQueue& queue,
         bool sender,
         std::atomic<bool>& shutdown
-    ) : ThreadWorker(ctx, cfg), shutdown(shutdown), sender(sender), queue(queue) {};
+    ) : ThreadWorker(ctx, cfg), shutdown(shutdown),
+                                sender(sender),
+                                queue(queue),
+                                timeout(cfg.timeout) {};
     void run() override;
 protected:
     std::atomic<bool>& shutdown;
 private:
     bool sender;
     MessageQueue& queue;
+    int timeout;
 };
 
 class ConnectionTesterWorker : public ThreadWorker {

@@ -93,7 +93,6 @@ void LockfreeWorker::run() {
     if (!sender) {
         std::cout << "Starting Lockfree forward. Receiver TID: " << tid << std::endl;
         socket = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
-        int timeout = 5000;
         zmq_setsockopt(socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
         bool started_work = false;
         while (1) {

@@ -14,10 +14,11 @@ void load_config(const std::string& fname, Config& cfg) {
 
     cfg.inurl = jobj.at("inurl").get<std::string>();
     cfg.outurl = jobj.value("outurl", "");
+    cfg.type = jobj.value("type", 4);
     cfg.helper_threads = jobj.value("helper_threads", 0);
-    cfg.type = jobj.value("type", 1);
-    cfg.io_threads = jobj.value("io_threads", 1);
-    cfg.hwm = jobj.value("hwm", 1);
+    cfg.io_threads = jobj.value("io_threads", 16);
+    cfg.hwm = jobj.value("hwm", 10);
+    cfg.timeout = jobj.value("timeout", -1);
     cfg.verbose = jobj.value("verbose", false);
 
     // TODO error handling here 
