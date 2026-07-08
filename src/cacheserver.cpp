@@ -16,6 +16,7 @@ CacheServer::CacheServer(Config &config)
         std::cout << "Timeout: " << cfg.timeout << " ms." << std::endl;
     }
     std::cout << "Verbose: " << cfg.verbose << "." << std::endl;
+    std::cout << "Metrics: " << cfg.metrics << "." << std::endl;
 }
 
 CacheServer::~CacheServer() {

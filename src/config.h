@@ -20,6 +20,7 @@ struct Config
     int hwm;
     int timeout;
     bool verbose;
+    bool metrics;
 };
 
 void load_config(const std::string& fname, Config& conf);

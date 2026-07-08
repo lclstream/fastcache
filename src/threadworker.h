@@ -71,6 +71,7 @@ private:
     bool sender;
     MessageQueue& queue;
     int timeout;
+    void* metrics_socket = nullptr;
 };
 
 class ConnectionTesterWorker : public ThreadWorker {

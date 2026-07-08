@@ -20,6 +20,7 @@ void load_config(const std::string& fname, Config& cfg) {
     cfg.hwm = jobj.value("hwm", 10);
     cfg.timeout = jobj.value("timeout", -1);
     cfg.verbose = jobj.value("verbose", false);
+    cfg.metrics = jobj.value("metrics", false);
 
     // TODO error handling here 
 

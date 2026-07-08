@@ -90,10 +90,17 @@ void InprocWorker::run() {
 void LockfreeWorker::run() {
     void* socket;
     pid_t tid = syscall(SYS_gettid);
+    int64_t rc_count = 0;
+    int msg_count = 0;
     if (!sender) {
         std::cout << "Starting Lockfree forward. Receiver TID: " << tid << std::endl;
         socket = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
         zmq_setsockopt(socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
+        if (cfg.metrics) {
+            int hwm = 10000;
+            std::string receiver_metrics_url = "ipc:///tmp/fastcache-metrics-receiver";
+            metrics_socket = create_socket(zmq_ctx, {ZMQ_PUB, hwm, receiver_metrics_url, true});
+        }
         bool started_work = false;
         while (1) {
             zmq_msg_t msg;
@@ -111,18 +118,35 @@ void LockfreeWorker::run() {
                 }
                 shutdown.store(true, std::memory_order_release);
                 break;
+            } else if (cfg.metrics) {
+                rc_count += rc;
+                msg_count++;
+                if (msg_count%1000 == 0) {
+                    auto timenow = std::chrono::system_clock::now();
+                    auto time_since_epoch = timenow.time_since_epoch();
+                    uint64_t timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(time_since_epoch).count();
+                    std::string msg = "Receiver," + std::to_string(timestamp) + "," + std::to_string(rc_count) + "," + std::to_string(msg_count);
+                    zmq_send(metrics_socket, msg.data(), msg.size(), ZMQ_DONTWAIT);
+                    rc_count = 0;
+                    msg_count = 0;
+                }
             }
             started_work = true;
             zmq_msg_t* qmsg = new zmq_msg_t();
             zmq_msg_init(qmsg);
             zmq_msg_move(qmsg, &msg); 
             while (!queue.push(qmsg)) {
-                std::this_thread::yield();
+                std::this_thread::sleep_for(std::chrono::microseconds(50));
             }
         }
     } else {
         std::cout << "Starting Lockfree forward. Sender TID: " << tid << std::endl;
         socket = create_socket(zmq_ctx, {ZMQ_PUSH, cfg.hwm, cfg.outurl, true});
+        if (cfg.metrics) {
+            int hwm = 10000;
+            std::string sender_metrics_url = "ipc:///tmp/fastcache-metrics-sender";
+            metrics_socket = create_socket(zmq_ctx, {ZMQ_PUB, hwm, sender_metrics_url, true});
+        }
         while (1) {
             zmq_msg_t* msg;
             if (queue.pop(msg)) {
@@ -131,6 +155,18 @@ void LockfreeWorker::run() {
                 delete msg;
                 if (rc < 0) {
                     break;
+                } else if (cfg.metrics) {
+                    rc_count += rc;
+                    msg_count++;
+                    if (msg_count%1000 == 0) {
+                        auto timenow = std::chrono::system_clock::now();
+                        auto time_since_epoch = timenow.time_since_epoch();
+                        uint64_t timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(time_since_epoch).count();
+                        std::string msg = "Sender," + std::to_string(timestamp) + "," + std::to_string(rc_count) + "," + std::to_string(msg_count);
+                        zmq_send(metrics_socket, msg.data(), msg.size(), ZMQ_DONTWAIT);
+                        rc_count = 0;
+                        msg_count = 0;
+                    }
                 }
                 continue;
             }
@@ -141,6 +177,9 @@ void LockfreeWorker::run() {
         }
     }
     zmq_close(socket);
+    if (cfg.metrics) {
+        zmq_close(metrics_socket);
+    }
 }
 
 void ConnectionTesterWorker::run() {

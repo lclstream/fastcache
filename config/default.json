@@ -1,8 +1,9 @@
 {
-  "inurl": "tcp://134.79.23.43:5001",
-  "outurl": "tcp://134.79.23.43:5556",
+  "inurl": "tcp://134.79.23.42:5001",
+  "outurl": "tcp://134.79.23.42:5556",
   "io_threads": 16,
   "hwm": 10,
   "timeout": -1,
-  "verbose": true
+  "verbose": true,
+  "metrics": true
 }
