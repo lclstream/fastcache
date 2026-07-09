@@ -1,6 +1,5 @@
 #include <iostream>
 #include <thread>
-#include <sys/syscall.h>
 #include <zmq.h>
 #include "threadworker.h"
 
@@ -84,23 +83,37 @@ void InprocWorker::run() {
     }
     zmq_close(incoming);
     zmq_close(outgoing);
+}
 
+std::string LockfreeWorker::create_metrics(uint64_t rc_count, uint64_t msg_count, uint64_t metrics_count) {
+    auto timenow = std::chrono::system_clock::now();
+    auto time_since_epoch = timenow.time_since_epoch();
+    uint64_t timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(time_since_epoch).count();
+    json metrics_data = {
+        {"type", sender ? "Sender" : "Receiver"},
+        {"timestamp", timestamp},
+        {"rc_count", rc_count},
+        {"msg_count", msg_count},
+        {"metrics_count", metrics_count}
+    };
+    return metrics_data.dump();
 }
 
 void LockfreeWorker::run() {
     void* socket;
     void* metrics_socket = nullptr;
     std::string metrics_path;
-    pid_t tid = syscall(SYS_gettid);
+    auto tid = std::this_thread::get_id();
     uint64_t rc_count = 0;
     uint64_t msg_count = 0;
+    uint64_t metrics_count = 0;
     if (!sender) {
         std::cout << "Starting Lockfree forward. Receiver TID: " << tid << std::endl;
         socket = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
         zmq_setsockopt(socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
         if (cfg.metrics) {
             int hwm = 10000;
-            metrics_path = "/tmp/fastcache-metrics-receiver-" + std::to_string(tid);
+            metrics_path = "/tmp/fastcache-metrics-receiver-" + std::to_string(cfg.cache_id);
             std::string receiver_metrics_url = "ipc://" + metrics_path;
             metrics_socket = create_socket(zmq_ctx, {ZMQ_PUB, hwm, receiver_metrics_url, true});
         }
@@ -126,16 +139,13 @@ void LockfreeWorker::run() {
                 rc_count += rc;
                 msg_count++;
                 if (msg_count%cfg.metrics_interval == 0) {
-                    auto timenow = std::chrono::system_clock::now();
-                    auto time_since_epoch = timenow.time_since_epoch();
-                    uint64_t timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(time_since_epoch).count();
-                    char buffer[256];
-                    int len = snprintf(buffer, sizeof(buffer), "Receiver,%lu,%lu,%lu", timestamp, rc_count, msg_count);
-                    if (metrics_socket && len > 0) {
-                        zmq_send(metrics_socket, buffer, len, ZMQ_DONTWAIT);
+                    std::string buffer = create_metrics(rc_count, msg_count, metrics_count);
+                    if (metrics_socket && !buffer.empty()) {
+                        zmq_send(metrics_socket, buffer.data(), buffer.size(), ZMQ_DONTWAIT);
                     }
                     rc_count = 0;
                     msg_count = 0;
+                    metrics_count++;
                 }
             }
             started_work = true;
@@ -154,7 +164,7 @@ void LockfreeWorker::run() {
         socket = create_socket(zmq_ctx, {ZMQ_PUSH, cfg.hwm, cfg.outurl, true});
         if (cfg.metrics) {
             int hwm = 10000;
-            metrics_path = "/tmp/fastcache-metrics-sender-" + std::to_string(tid);
+            metrics_path = "/tmp/fastcache-metrics-sender-" + std::to_string(cfg.cache_id);
             std::string sender_metrics_url = "ipc://" + metrics_path;
             metrics_socket = create_socket(zmq_ctx, {ZMQ_PUB, hwm, sender_metrics_url, true});
         }
@@ -170,16 +180,13 @@ void LockfreeWorker::run() {
                     rc_count += rc;
                     msg_count++;
                     if (msg_count%cfg.metrics_interval == 0) {
-                        auto timenow = std::chrono::system_clock::now();
-                        auto time_since_epoch = timenow.time_since_epoch();
-                        uint64_t timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(time_since_epoch).count();
-                        char buffer[256];
-                        int len = snprintf(buffer, sizeof(buffer), "Sender,%lu,%lu,%lu", timestamp, rc_count, msg_count);
-                        if (metrics_socket && len > 0) {
-                            zmq_send(metrics_socket, buffer, len, ZMQ_DONTWAIT);
+                        std::string buffer = create_metrics(rc_count, msg_count, metrics_count);
+                        if (metrics_socket && !buffer.empty()) {
+                            zmq_send(metrics_socket, buffer.data(), buffer.size(), ZMQ_DONTWAIT);
                         }
                         rc_count = 0;
                         msg_count = 0;
+                        metrics_count++;
                     }
                 }
             }

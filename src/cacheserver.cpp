@@ -16,7 +16,8 @@ CacheServer::CacheServer(Config &config, std::atomic<bool>& shutdown)
         std::cout << "Timeout: " << cfg.timeout << " ms." << std::endl;
     }
     std::cout << "Verbose: " << cfg.verbose << "." << std::endl;
-    std::cout << "Metrics: " << cfg.metrics << "." << std::endl;
+    std::cout << "Metrics interval: " << cfg.metrics_interval << "." << std::endl;
+    std::cout << "Cache ID: " << cfg.cache_id << "." << std::endl;
 }
 
 CacheServer::~CacheServer() {

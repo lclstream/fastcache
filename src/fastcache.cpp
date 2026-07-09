@@ -28,7 +28,6 @@ int main(int argc, char* argv[]) {
 
     load_config(fname, cfg);
     CacheServer serv(cfg, shutdown);
-    usleep(500);
     serv.Run();
 
     return 0;

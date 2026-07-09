@@ -22,6 +22,7 @@ void load_config(const std::string& fname, Config& cfg) {
     cfg.verbose = jobj.value("verbose", false);
     cfg.metrics = jobj.value("metrics", false);
     cfg.metrics_interval = jobj.value("metrics_interval", 10000);
+    cfg.cache_id = jobj.value("cache_id", 1);
 
     if (cfg.metrics_interval <= 0) {
        std::cerr << "Fatal: metrics_interval must be bigger than 0.\n";

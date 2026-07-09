@@ -22,6 +22,7 @@ struct Config
     bool verbose;
     bool metrics;
     uint32_t metrics_interval;
+    uint32_t cache_id;
 };
 
 void load_config(const std::string& fname, Config& conf);
