@@ -21,6 +21,7 @@ struct Config
     int timeout;
     bool verbose;
     bool metrics;
+    uint32_t metrics_interval;
 };
 
 void load_config(const std::string& fname, Config& conf);
