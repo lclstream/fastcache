@@ -3,8 +3,8 @@
 #include "cacheserver.h"
 
 
-CacheServer::CacheServer(Config &config) 
-    : cfg(config) {
+CacheServer::CacheServer(Config &config, std::atomic<bool>& shutdown)
+    : cfg(config), shutdown(shutdown) {
     zmq_ctx = zmq_ctx_new();
     zmq_ctx_set(zmq_ctx, ZMQ_IO_THREADS, cfg.io_threads);
 
@@ -16,10 +16,13 @@ CacheServer::CacheServer(Config &config)
         std::cout << "Timeout: " << cfg.timeout << " ms." << std::endl;
     }
     std::cout << "Verbose: " << cfg.verbose << "." << std::endl;
+    std::cout << "Metrics interval: " << cfg.metrics_interval << "." << std::endl;
+    std::cout << "Cache ID: " << cfg.cache_id << "." << std::endl;
 }
 
 CacheServer::~CacheServer() {
     std::cout << "Shutting down all threads. " << std::endl;
+    shutdown.store(true, std::memory_order_release);
     for (auto& thread: threads) {
         if (thread.joinable())
             thread.join();
@@ -34,19 +37,19 @@ void CacheServer::Run() {
     threads.reserve(workers.size());
 
     for (auto& worker: workers) {
-        threads.emplace_back([&worker]() {
-            worker->run();
+        auto* workerptr = worker.get();
+        threads.emplace_back([workerptr]() {
+            workerptr->run();
         });
     }
-
-    if (cfg.verbose && cfg.type == 4) {
-        while (!shutdown.load(std::memory_order_acquire)) {
+    while (!shutdown.load(std::memory_order_acquire)) {
+        if (cfg.verbose && cfg.type == 4) {
             int num = queue.read_available();
             if (num > 1) {
                 std::cout << "Elements in queue: " << num << std::endl;
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
 }
 

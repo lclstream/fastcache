@@ -14,7 +14,7 @@
 class CacheServer {
 
 public:
-    CacheServer(Config& cfg);
+    CacheServer(Config& cfg, std::atomic<bool>& shutdown);
     ~CacheServer();
     void Run();
 
@@ -27,7 +27,7 @@ private:
     std::vector<std::unique_ptr<ThreadWorker>> workers;
     std::vector<std::thread> threads;
     bool verbose = false;
-    std::atomic<bool> shutdown{false};
+    std::atomic<bool>& shutdown;
     MessageQueue queue;
 };
 

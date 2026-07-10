@@ -59,3 +59,9 @@ Outgoing ZMQ URL where the receivers can connect to.
 `timeout`: Set in milliseconds. To block forever set to -1. Only counted once the receiver thread started working.
 
 `verbose`: Enables logging of queue size.
+
+`metrics`: Enables metrics to be sent via an ipc socket. Available only for type 4. IPC socket address is "ipc:///tmp/fastcache-metrics-receiver(/sender)-12345" (number is the cache id)
+
+`metrics_interval`: Number of messages before metrics are sent to the ipc socket.
+
+`cache_id`: Unique identifier for the ipc metrics url

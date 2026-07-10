@@ -65,6 +65,7 @@ public:
                                 queue(queue),
                                 timeout(cfg.timeout) {};
     void run() override;
+    std::string create_metrics(uint64_t rc_count, uint64_t msg_count, uint64_t metrics_count);
 protected:
     std::atomic<bool>& shutdown;
 private:
