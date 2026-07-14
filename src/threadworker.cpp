@@ -44,7 +44,7 @@ void ProxyWorker::run() {
     void *incoming = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
     void *outgoing = create_socket(zmq_ctx, {ZMQ_PUSH, cfg.hwm, cfg.outurl, true});
 
-    std::cout << "Starting simple forward with 1 thread. PID" << std::this_thread::get_id() << std::endl;
+    std::cout << "Starting simple forward with 1 thread. TID" << std::this_thread::get_id() << std::endl;
 
     int prob = 0;
 
@@ -63,13 +63,14 @@ void ProxyWorker::run() {
 void InprocWorker::run() {
     void *incoming;
     void *outgoing;
+    auto tid = std::this_thread::get_id();
 
     if (!sender) {
-        std::cout << "Starting Inproc forward. Receiver PID: " << std::this_thread::get_id() << std::endl;
+        std::cout << "Starting Inproc forward. Receiver TID: " << tid << std::endl;
         incoming = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
         outgoing = create_socket(zmq_ctx, {ZMQ_PUSH, cfg.hwm, cfg.workerurl, true});
     } else {
-        std::cout << "Starting Inproc forward. Sender PID: " << std::this_thread::get_id() << std::endl;
+        std::cout << "Starting Inproc forward. Sender TID: " << tid << std::endl;
         incoming = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.workerurl, false});
         if (bindoutgoing) {
             outgoing = create_socket(zmq_ctx, {ZMQ_PUSH, cfg.hwm, cfg.outurl, true});
@@ -129,7 +130,9 @@ void LockfreeWorker::run() {
                 if (err == EAGAIN) {
                     if (shutdown.load(std::memory_order_acquire)) break;
                     if (!started_work) continue;
-                    std::cout << "No messages for 5 seconds. Exiting." << std::endl;
+                    if (timeout > 0) {
+                        std::cout << "No messages for " << static_cast<double>(timeout)/1000 << " seconds. Exiting." << std::endl;
+                    }
                 } else {
                     std::cerr << "Error, " << zmq_strerror(err) << " closing threads." << std::endl;
                 }
