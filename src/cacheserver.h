@@ -16,7 +16,7 @@ class CacheServer {
 public:
     CacheServer(Config& cfg, std::atomic<bool>& shutdown);
     ~CacheServer();
-    void Run();
+    void run();
 
 private:
     std::vector<std::unique_ptr<ThreadWorker>> create(Config& cfg, void* zmq_ctx);

@@ -32,7 +32,7 @@ CacheServer::~CacheServer() {
     }
 }
 
-void CacheServer::Run() {
+void CacheServer::run() {
     workers = create(cfg, zmq_ctx);
     threads.reserve(workers.size());
 
@@ -77,12 +77,13 @@ std::vector<std::unique_ptr<ThreadWorker>> CacheServer::create(Config& cfg, void
         }
         case 4: // lock free queue
             // receiver:
-            workerlist.push_back(std::make_unique<LockfreeWorker>(zmq_ctx, cfg, queue, false, shutdown));
+            workerlist.push_back(std::make_unique<ReceiverLockFreeWorker>(zmq_ctx, cfg, queue, shutdown));
             // sender
-            workerlist.push_back(std::make_unique<LockfreeWorker>(zmq_ctx, cfg, queue, true, shutdown));
+            workerlist.push_back(std::make_unique<SenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown));
             break;
-        case 5:
-            // placeholder for request handler
+        case 5: // lock free queue with push-pull in and router out
+            // receiver:
+            // sender:
             break;
         case 6:  // test connection
             workerlist.push_back(std::make_unique<ConnectionTesterWorker>(zmq_ctx, cfg));

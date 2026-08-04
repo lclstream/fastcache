@@ -86,7 +86,7 @@ void InprocWorker::run() {
     zmq_close(outgoing);
 }
 
-std::string LockfreeWorker::create_metrics(uint64_t rc_count, uint64_t msg_count, uint64_t metrics_count) {
+std::string LockFreeWorker::create_metrics(uint64_t rc_count, uint64_t msg_count, uint64_t metrics_count) {
     auto timenow = std::chrono::system_clock::now();
     auto time_since_epoch = timenow.time_since_epoch();
     uint64_t timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(time_since_epoch).count();
@@ -100,111 +100,121 @@ std::string LockfreeWorker::create_metrics(uint64_t rc_count, uint64_t msg_count
     return metrics_data.dump();
 }
 
-void LockfreeWorker::run() {
+void LockFreeWorker::send_metrics(MetricsData& metrics, int rc, void* metrics_socket) {
+    metrics.rc_count += rc;
+    metrics.msg_count++;
+    if (metrics.msg_count%cfg.metrics_interval == 0) {
+        std::string buffer = create_metrics(metrics.rc_count, metrics.msg_count, metrics.metrics_count);
+        if (metrics_socket && !buffer.empty()) {
+            zmq_send(metrics_socket, buffer.data(), buffer.size(), ZMQ_DONTWAIT);
+        }
+        metrics.rc_count = 0;
+        metrics.msg_count = 0;
+        metrics.metrics_count++;
+    }
+}
+
+void* LockFreeWorker::create_metrics_socket(std::string& metrics_path) {
+    int hwm = 10000;
+    std::string role = sender ? "sender" : "receiver";
+    metrics_path = "/tmp/fastcache-metrics-" + role + "-" + std::to_string(cfg.cache_id);
+    std::string sender_metrics_url = "ipc://" + metrics_path;
+    return create_socket(zmq_ctx, {ZMQ_PUB, hwm, sender_metrics_url, true});
+}
+
+void LockFreeWorker::cleanup_metrics(std::thread::id tid, void* metrics_socket, std::string& metrics_path) {
+    std::cout << "Closing thread: " << tid << std::endl;
+    zmq_close(metrics_socket);
+    metrics_socket = nullptr;
+    std::remove(metrics_path.c_str());
+}
+
+void SenderLockFreeWorker::run() {
     void* socket;
     void* metrics_socket = nullptr;
     std::string metrics_path;
+    MetricsData metrics_data;
     auto tid = std::this_thread::get_id();
-    uint64_t rc_count = 0;
-    uint64_t msg_count = 0;
-    uint64_t metrics_count = 0;
-    if (!sender) {
-        std::cout << "Starting Lockfree forward. Receiver TID: " << tid << std::endl;
-        socket = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
-        zmq_setsockopt(socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
-        if (cfg.metrics) {
-            int hwm = 10000;
-            metrics_path = "/tmp/fastcache-metrics-receiver-" + std::to_string(cfg.cache_id);
-            std::string receiver_metrics_url = "ipc://" + metrics_path;
-            metrics_socket = create_socket(zmq_ctx, {ZMQ_PUB, hwm, receiver_metrics_url, true});
-        }
-        bool started_work = false;
-        while (1) {
-            zmq_msg_t msg;
-            zmq_msg_init(&msg);
 
-            int rc = zmq_msg_recv(&msg, socket, 0);
+    std::cout << "Starting Lockfree forward. Sender TID: " << tid << std::endl;
+    socket = create_socket(zmq_ctx, {ZMQ_PUSH, cfg.hwm, cfg.outurl, true});
+    if (cfg.metrics) {
+        metrics_socket = create_metrics_socket(metrics_path);
+    }
+    while (1) {
+        zmq_msg_t* msg;
+        if (queue.pop(msg)) {
+            int rc = zmq_msg_send(msg, socket, 0);
+            zmq_msg_close(msg);
+            delete msg;
             if (rc < 0) {
-                zmq_msg_close(&msg);
-                int err = zmq_errno();
-                if (err == EAGAIN) {
-                    if (shutdown.load(std::memory_order_acquire)) break;
-                    if (!started_work) continue;
-                    if (timeout > 0) {
-                        std::cout << "No messages for " << static_cast<double>(timeout)/1000 << " seconds. Exiting." << std::endl;
-                    }
-                } else {
-                    std::cerr << "Error, " << zmq_strerror(err) << " closing threads." << std::endl;
-                }
-                shutdown.store(true, std::memory_order_release);
                 break;
             } else if (cfg.metrics) {
-                rc_count += rc;
-                msg_count++;
-                if (msg_count%cfg.metrics_interval == 0) {
-                    std::string buffer = create_metrics(rc_count, msg_count, metrics_count);
-                    if (metrics_socket && !buffer.empty()) {
-                        zmq_send(metrics_socket, buffer.data(), buffer.size(), ZMQ_DONTWAIT);
-                    }
-                    rc_count = 0;
-                    msg_count = 0;
-                    metrics_count++;
-                }
-            }
-            started_work = true;
-            zmq_msg_t* qmsg = new zmq_msg_t();
-            zmq_msg_init(qmsg);
-            zmq_msg_move(qmsg, &msg); 
-            while (!queue.push(qmsg)) {
-                std::this_thread::sleep_for(std::chrono::microseconds(50));
-            }
-            if (shutdown.load(std::memory_order_acquire)) {
-                break;
+                send_metrics(metrics_data, rc, metrics_socket);
             }
         }
-    } else {
-        std::cout << "Starting Lockfree forward. Sender TID: " << tid << std::endl;
-        socket = create_socket(zmq_ctx, {ZMQ_PUSH, cfg.hwm, cfg.outurl, true});
-        if (cfg.metrics) {
-            int hwm = 10000;
-            metrics_path = "/tmp/fastcache-metrics-sender-" + std::to_string(cfg.cache_id);
-            std::string sender_metrics_url = "ipc://" + metrics_path;
-            metrics_socket = create_socket(zmq_ctx, {ZMQ_PUB, hwm, sender_metrics_url, true});
+        if (shutdown.load(std::memory_order_acquire) && queue.read_available() == 0) {
+            break;
         }
-        while (1) {
-            zmq_msg_t* msg;
-            if (queue.pop(msg)) {
-                int rc = zmq_msg_send(msg, socket, 0);
-                zmq_msg_close(msg);
-                delete msg;
-                if (rc < 0) {
-                    break;
-                } else if (cfg.metrics) {
-                    rc_count += rc;
-                    msg_count++;
-                    if (msg_count%cfg.metrics_interval == 0) {
-                        std::string buffer = create_metrics(rc_count, msg_count, metrics_count);
-                        if (metrics_socket && !buffer.empty()) {
-                            zmq_send(metrics_socket, buffer.data(), buffer.size(), ZMQ_DONTWAIT);
-                        }
-                        rc_count = 0;
-                        msg_count = 0;
-                        metrics_count++;
-                    }
-                }
-            }
-            if (shutdown.load(std::memory_order_acquire) && queue.read_available() == 0) {
-                break;
-            }
-            std::this_thread::yield();
-        }
+        std::this_thread::yield();
     }
     zmq_close(socket);
     if (cfg.metrics) {
-        std::cout << "Closing thread: " << tid << std::endl;
-        zmq_close(metrics_socket);
-        metrics_socket = nullptr;
-        std::remove(metrics_path.c_str());
+        cleanup_metrics(tid, metrics_socket, metrics_path);
+    }
+}
+
+void ReceiverLockFreeWorker::run() {
+    void* socket;
+    void* metrics_socket = nullptr;
+    std::string metrics_path;
+    MetricsData metrics_data;
+    auto tid = std::this_thread::get_id();
+
+    std::cout << "Starting Lockfree forward. Receiver TID: " << tid << std::endl;
+    socket = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
+    zmq_setsockopt(socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
+    if (cfg.metrics) {
+        metrics_socket = create_metrics_socket(metrics_path);
+    }
+    bool started_work = false;
+    while (1) {
+        zmq_msg_t msg;
+        zmq_msg_init(&msg);
+
+        int rc = zmq_msg_recv(&msg, socket, 0);
+        if (rc < 0) {
+            zmq_msg_close(&msg);
+            int err = zmq_errno();
+            if (err == EAGAIN) {
+                if (shutdown.load(std::memory_order_acquire)) break;
+                if (!started_work) continue;
+                if (timeout > 0) {
+                    std::cout << "No messages for " << static_cast<double>(timeout)/1000 << " seconds. Exiting." << std::endl;
+                }
+            } else {
+                std::cerr << "Error, " << zmq_strerror(err) << " closing threads." << std::endl;
+            }
+            shutdown.store(true, std::memory_order_release);
+            break;
+        } else if (cfg.metrics) {
+            send_metrics(metrics_data, rc, metrics_socket);
+        }
+        started_work = true;
+        zmq_msg_t* qmsg = new zmq_msg_t();
+        zmq_msg_init(qmsg);
+        zmq_msg_move(qmsg, &msg); 
+        while (!queue.push(qmsg)) {
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
+        }
+        if (shutdown.load(std::memory_order_acquire)) {
+            break;
+        }
+    }
+
+    zmq_close(socket);
+    if (cfg.metrics) {
+        cleanup_metrics(tid, metrics_socket, metrics_path);
     }
 }
 

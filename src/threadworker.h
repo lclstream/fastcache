@@ -17,6 +17,12 @@ struct SocketConfig {
     bool isbind;
 };
 
+struct MetricsData {
+    uint64_t rc_count = 0;
+    uint64_t msg_count = 0;
+    uint64_t metrics_count = 0;
+};
+
 class ThreadWorker {
 public:
     ThreadWorker(void* zmq_ctx, const Config& config)
@@ -52,9 +58,9 @@ private:
     bool bindoutgoing;
 };
 
-class LockfreeWorker : public ThreadWorker {
+class LockFreeWorker : public ThreadWorker {
 public:
-    LockfreeWorker(
+    LockFreeWorker(
         void* ctx,
         const Config& cfg,
         MessageQueue& queue,
@@ -64,15 +70,50 @@ public:
                                 sender(sender),
                                 queue(queue),
                                 timeout(cfg.timeout) {};
-    void run() override;
-    std::string create_metrics(uint64_t rc_count, uint64_t msg_count, uint64_t metrics_count);
+    //void run() override;
 protected:
     std::atomic<bool>& shutdown;
-private:
     bool sender;
     MessageQueue& queue;
     int timeout;
+protected:
+    std::string create_metrics(uint64_t rc_count, uint64_t msg_count, uint64_t metrics_count);
+    void send_metrics(MetricsData& metrics, int rc, void* metrics_socket);
+    void* create_metrics_socket(std::string& metrics_path);
+    void cleanup_metrics(std::thread::id tid, void* metrics_socket, std::string& metrics_path);
 };
+
+class SenderLockFreeWorker : public LockFreeWorker {
+public:
+    SenderLockFreeWorker(
+        void* ctx,
+        const Config& cfg,
+        MessageQueue& queue,
+        std::atomic<bool>& shutdown
+    ) : LockFreeWorker(ctx, cfg, queue, true, shutdown) {};
+    void run() override;
+};
+
+class ReceiverLockFreeWorker : public LockFreeWorker {
+public:
+    ReceiverLockFreeWorker(
+        void* ctx,
+        const Config& cfg,
+        MessageQueue& queue,
+        std::atomic<bool>& shutdown
+    ) : LockFreeWorker(ctx, cfg, queue, false, shutdown) {};
+    void run() override;
+};
+
+//class DealerSenderLockFreeWorker : public LockFreeWorker {
+//public:
+//    DealerSenderLockFreeWorker()
+//}
+
+//class ReplySenderLockFreeWorker : public LockFreeWorker {
+//public:
+//    ReplySenderLockFreeWorker()
+//}
 
 class ConnectionTesterWorker : public ThreadWorker {
 public:
