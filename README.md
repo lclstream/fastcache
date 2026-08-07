@@ -47,8 +47,9 @@ Outgoing ZMQ URL where the receivers can connect to.
 - `2`: bind inproc forward
 - `3`: bind connect forward
 - `4`: lock-free queue forward with two threads, this is the **default** mode.
-- `5`: place holder for request handler
-- `6`: connection test for sender
+- `5`: lock-free router forward
+- `6`: lock-free rep forward
+- `7`: connection test for sender
 
 `helper_threads`: Number of extra worker threads used (not used in default mode)
 

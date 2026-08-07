@@ -86,6 +86,14 @@ void InprocWorker::run() {
     zmq_close(outgoing);
 }
 
+void* LockFreeWorker::create_metrics_socket(std::string& metrics_path) {
+    int hwm = 10000;
+    std::string role = sender ? "sender" : "receiver";
+    metrics_path = "/tmp/fastcache-metrics-" + role + "-" + std::to_string(cfg.cache_id);
+    std::string sender_metrics_url = "ipc://" + metrics_path;
+    return create_socket(zmq_ctx, {ZMQ_PUB, hwm, sender_metrics_url, true});
+}
+
 std::string LockFreeWorker::create_metrics(uint64_t rc_count, uint64_t msg_count, uint64_t metrics_count) {
     auto timenow = std::chrono::system_clock::now();
     auto time_since_epoch = timenow.time_since_epoch();
@@ -114,19 +122,80 @@ void LockFreeWorker::send_metrics(MetricsData& metrics, int rc, void* metrics_so
     }
 }
 
-void* LockFreeWorker::create_metrics_socket(std::string& metrics_path) {
-    int hwm = 10000;
-    std::string role = sender ? "sender" : "receiver";
-    metrics_path = "/tmp/fastcache-metrics-" + role + "-" + std::to_string(cfg.cache_id);
-    std::string sender_metrics_url = "ipc://" + metrics_path;
-    return create_socket(zmq_ctx, {ZMQ_PUB, hwm, sender_metrics_url, true});
-}
-
 void LockFreeWorker::cleanup_metrics(std::thread::id tid, void* metrics_socket, std::string& metrics_path) {
     std::cout << "Closing thread: " << tid << std::endl;
     zmq_close(metrics_socket);
     metrics_socket = nullptr;
     std::remove(metrics_path.c_str());
+}
+
+Action SenderLockFreeWorker::receive(void*) {
+    return Action::Resume;
+}
+
+Action ReplySenderLockFreeWorker::receive(void* socket) {
+    zmq_msg_t request;
+    zmq_msg_init(&request);
+    int rc = zmq_msg_recv(&request, socket, 0);
+    if (rc < 0) {
+        if (errno == EAGAIN) {
+            if (shutdown.load(std::memory_order_acquire))
+                return Action::Break;
+            return Action::Continue;
+        }
+        return Action::Break;
+    }
+    zmq_msg_close(&request);
+    return Action::Resume;
+}
+
+Action RouterSenderLockFreeWorker:: receive(void* socket) {
+    zmq_msg_close(&id);
+    zmq_msg_init(&id);
+    int rc = zmq_msg_recv(&id, socket, 0);
+    if (rc < 0) {
+        if (errno == EAGAIN) {
+            if (shutdown.load(std::memory_order_acquire)) {
+                return Action::Break;
+            }
+            return Action::Continue;
+        }
+        return Action::Break;
+    }
+    zmq_msg_t empty;
+    zmq_msg_t request;
+    zmq_msg_init(&empty);
+    zmq_msg_init(&request);
+    zmq_msg_recv(&empty, socket, 0);
+    zmq_msg_recv(&request, socket, 0);
+    zmq_msg_close(&empty);
+    zmq_msg_close(&request);
+    return Action::Resume;
+}
+
+int SenderLockFreeWorker::send(void* socket, zmq_msg_t* msg) {
+    return zmq_msg_send(msg, socket, 0);
+}
+
+int RouterSenderLockFreeWorker::send(void* socket, zmq_msg_t* msg) {
+    //zmq_msg_t id_copy;
+    //zmq_msg_init(&id_copy);
+    //zmq_msg_copy(&id_copy, &id);
+    //int rc = zmq_msg_send(&id_copy, socket, ZMQ_SNDMORE);
+    int rc = zmq_msg_send(&id, socket, ZMQ_SNDMORE);
+    if (rc < 0) {
+        //zmq_msg_close(&id_copy);
+        zmq_msg_close(&id);
+        return -1;
+    }
+    zmq_msg_t empty;
+    zmq_msg_init(&empty);
+    rc = zmq_msg_send(&empty, socket, ZMQ_SNDMORE);
+    if (rc < 0) {
+        zmq_msg_close(&empty);
+        return -1;
+    }
+    return zmq_msg_send(msg, socket, 0);
 }
 
 void SenderLockFreeWorker::run() {
@@ -138,25 +207,30 @@ void SenderLockFreeWorker::run() {
 
     std::cout << "Starting Lockfree forward. Sender TID: " << tid << std::endl;
     socket = create_socket(zmq_ctx, {socket_type, cfg.hwm, cfg.outurl, true});
+    zmq_setsockopt(socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
     if (cfg.metrics) {
         metrics_socket = create_metrics_socket(metrics_path);
     }
     while (1) {
-        zmq_msg_t* msg;
-        if (queue.pop(msg)) {
-            int rc = zmq_msg_send(msg, socket, 0);
-            zmq_msg_close(msg);
-            delete msg;
-            if (rc < 0) {
-                break;
-            } else if (cfg.metrics) {
-                send_metrics(metrics_data, rc, metrics_socket);
-            }
+        if (socket_type == ZMQ_REP || socket_type == ZMQ_ROUTER) {
+            Action ret = receive(socket);
+            if (ret == Action::Break) break;
+            if (ret == Action::Continue) continue;
         }
-        if (shutdown.load(std::memory_order_acquire) && queue.read_available() == 0) {
-            break;
+
+        zmq_msg_t* msg = nullptr;
+        while (!queue.pop(msg)) {
+            if (shutdown.load(std::memory_order_acquire) && queue.read_available() == 0) break;
+            std::this_thread::yield();
         }
-        std::this_thread::yield();
+        if (shutdown.load(std::memory_order_acquire) && msg == nullptr) break;
+        int rc = send(socket, msg);
+        zmq_msg_close(msg);
+        delete msg;
+        if (rc < 0) break;
+        if (cfg.metrics) {
+            send_metrics(metrics_data, rc, metrics_socket);
+        }        
     }
     zmq_close(socket);
     if (cfg.metrics) {

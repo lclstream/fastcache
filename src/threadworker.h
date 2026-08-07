@@ -23,6 +23,8 @@ struct MetricsData {
     uint64_t metrics_count = 0;
 };
 
+enum class Action { Continue, Break, Resume };
+
 class ThreadWorker {
 public:
     ThreadWorker(void* zmq_ctx, const Config& config)
@@ -83,20 +85,6 @@ protected:
     void cleanup_metrics(std::thread::id tid, void* metrics_socket, std::string& metrics_path);
 };
 
-class SenderLockFreeWorker : public LockFreeWorker {
-public:
-    SenderLockFreeWorker(
-        void* ctx,
-        const Config& cfg,
-        MessageQueue& queue,
-        std::atomic<bool>& shutdown,
-        int socket_type = ZMQ_PUSH
-    ) : LockFreeWorker(ctx, cfg, queue, true, shutdown), socket_type(socket_type) {};
-    void run() override;
-private:
-    int socket_type;
-};
-
 class ReceiverLockFreeWorker : public LockFreeWorker {
 public:
     ReceiverLockFreeWorker(
@@ -108,20 +96,49 @@ public:
     void run() override;
 };
 
-class DealerSenderLockFreeWorker : public SenderLockFreeWorker {
+class SenderLockFreeWorker : public LockFreeWorker {
 public:
-    DealerSenderLockFreeWorker(
+    SenderLockFreeWorker(
+        void* ctx,
+        const Config& cfg,
+        MessageQueue& queue,
+        std::atomic<bool>& shutdown,
+        int socket_type = ZMQ_PUSH
+    ) : LockFreeWorker(ctx, cfg, queue, true, shutdown), socket_type(socket_type) {};
+    void run() override;
+    virtual Action receive(void* socket);
+    virtual int send(void* socket, zmq_msg_t* msg);
+private:
+    int socket_type;
+};
+
+class RouterSenderLockFreeWorker : public SenderLockFreeWorker {
+public:
+    RouterSenderLockFreeWorker(
         void* ctx,
         const Config& cfg,
         MessageQueue& queue,
         std::atomic<bool>& shutdown
-    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown, ZMQ_DEALER) {};
+    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown, ZMQ_ROUTER) {};
+    ~RouterSenderLockFreeWorker() {
+        zmq_msg_close(&id); 
+    }
+    Action receive(void* socket) override;
+    int send(void* socket, zmq_msg_t* msg) override;
+public:
+    zmq_msg_t id;
 };
 
-//class ReplySenderLockFreeWorker : public SenderLockFreeWorker {
-//public:
-//    ReplySenderLockFreeWorker()
-//}
+class ReplySenderLockFreeWorker : public SenderLockFreeWorker {
+public:
+    ReplySenderLockFreeWorker(
+        void* ctx,
+        const Config& cfg,
+        MessageQueue& queue,
+        std::atomic<bool>& shutdown
+    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown, ZMQ_REP) {};
+    Action receive(void* socket) override;
+};
 
 class ConnectionTesterWorker : public ThreadWorker {
 public:
