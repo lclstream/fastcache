@@ -81,9 +81,11 @@ std::vector<std::unique_ptr<ThreadWorker>> CacheServer::create(Config& cfg, void
             // sender
             workerlist.push_back(std::make_unique<SenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown));
             break;
-        case 5: // lock free queue with push-pull in and router out
+        case 5: // lock free queue with push-pull in and dealer out
             // receiver:
+            workerlist.push_back(std::make_unique<ReceiverLockFreeWorker>(zmq_ctx, cfg, queue, shutdown));
             // sender:
+            workerlist.push_back(std::make_unique<DealerSenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown));
             break;
         case 6:  // test connection
             workerlist.push_back(std::make_unique<ConnectionTesterWorker>(zmq_ctx, cfg));

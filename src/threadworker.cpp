@@ -137,7 +137,7 @@ void SenderLockFreeWorker::run() {
     auto tid = std::this_thread::get_id();
 
     std::cout << "Starting Lockfree forward. Sender TID: " << tid << std::endl;
-    socket = create_socket(zmq_ctx, {ZMQ_PUSH, cfg.hwm, cfg.outurl, true});
+    socket = create_socket(zmq_ctx, {socket_type, cfg.hwm, cfg.outurl, true});
     if (cfg.metrics) {
         metrics_socket = create_metrics_socket(metrics_path);
     }

@@ -89,9 +89,12 @@ public:
         void* ctx,
         const Config& cfg,
         MessageQueue& queue,
-        std::atomic<bool>& shutdown
-    ) : LockFreeWorker(ctx, cfg, queue, true, shutdown) {};
+        std::atomic<bool>& shutdown,
+        int socket_type = ZMQ_PUSH
+    ) : LockFreeWorker(ctx, cfg, queue, true, shutdown), socket_type(socket_type) {};
     void run() override;
+private:
+    int socket_type;
 };
 
 class ReceiverLockFreeWorker : public LockFreeWorker {
@@ -105,12 +108,17 @@ public:
     void run() override;
 };
 
-//class DealerSenderLockFreeWorker : public LockFreeWorker {
-//public:
-//    DealerSenderLockFreeWorker()
-//}
+class DealerSenderLockFreeWorker : public SenderLockFreeWorker {
+public:
+    DealerSenderLockFreeWorker(
+        void* ctx,
+        const Config& cfg,
+        MessageQueue& queue,
+        std::atomic<bool>& shutdown
+    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown, ZMQ_DEALER) {};
+};
 
-//class ReplySenderLockFreeWorker : public LockFreeWorker {
+//class ReplySenderLockFreeWorker : public SenderLockFreeWorker {
 //public:
 //    ReplySenderLockFreeWorker()
 //}
