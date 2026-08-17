@@ -6,18 +6,41 @@
 CacheServer::CacheServer(Config &config, std::atomic<bool>& shutdown_signal)
     : cfg(config), shutdown_signal(shutdown_signal) {
     zmq_ctx = zmq_ctx_new();
-    zmq_ctx_set(zmq_ctx, ZMQ_IO_THREADS, cfg.io_threads);
+    zmq_ctx_set(zmq_ctx, ZMQ_IO_THREADS, cfg.zmq_io_threads);
 
+<<<<<<< HEAD
     std::cout << "Using " << cfg.io_threads << " zmq io threads." << std::endl;
     std::cout << "Trying to use " << cfg.helper_threads << " helper_threads." << std::endl;
     std::cout << "IN URL: " << cfg.inurl << " OUT URL: " << cfg.outurl << std::endl;
     std::cout << "Type: " << static_cast<int>(cfg.type) << "." << std::endl;
+=======
+    std::cout << "\n<<< Fastcache v0.2.0 >>> " << std::endl;
+    std::cout << "\n----- General config ----- " << std::endl;
+    std::cout << "zmq io threads:    " << cfg.zmq_io_threads << std::endl;
+    std::cout << "Helper threads:    " << cfg.helper_threads << std::endl;
+    std::cout << "IN URL:            " << cfg.inurl << std::endl;
+    std::cout << "OUT URL:           " << cfg.outurl << std::endl;
+    std::cout << "Type:              " << cfg.type << std::endl;
+>>>>>>> e76c8a4 (Added basic EJFat worker)
     if (cfg.timeout > 0) {
-        std::cout << "Timeout: " << cfg.timeout << " ms." << std::endl;
+        std::cout << "Timeout:           " << cfg.timeout << " ms." << std::endl;
     }
-    std::cout << "Verbose: " << cfg.verbose << "." << std::endl;
-    std::cout << "Metrics interval: " << cfg.metrics_interval << "." << std::endl;
-    std::cout << "Cache ID: " << cfg.cache_id << "." << std::endl;
+    std::cout << "Verbose:           " << cfg.verbose << std::endl;
+
+    std::cout << "\n----- Metrics config ----- " << std::endl;
+    std::cout << "Interval:          " << cfg.metrics_interval << std::endl;
+    std::cout << "Cache ID:          " << cfg.metrics_cache_id << std::endl;
+
+    if (cfg.type == 7 || cfg.type == 8) {
+        std::cout << "\n----- EJFat config -----" << std::endl;
+        std::cout << "Use LB:            " << cfg.ejfat_useLB << std::endl;
+        std::cout << "MTU:               " << cfg.ejfat_mtu << std::endl;
+        std::cout << "Send buffer size:  " << cfg.ejfat_sndbufsize << std::endl;
+        std::cout << "Rate (Gbps):       " << cfg.ejfat_rateGbps << std::endl;
+        std::cout << "Send Sockets:      " << cfg.ejfat_numSendSockets << std::endl;
+        std::cout << "Data sim threads:  " << cfg.dataSimulatorThreads << std::endl;
+        std::cout << "Data ID:           " << cfg.ejfat_dataId << "\n" << std::endl;
+    }
 }
 
 CacheServer::~CacheServer() {
@@ -108,6 +131,10 @@ std::vector<std::unique_ptr<ThreadWorker>> CacheServer::create(Config& cfg, void
             workerlist.push_back(std::make_unique<ReplySenderLockFreeWorker>(
                 zmq_ctx, cfg, queue, shutdown_signal));
             break;
+        case RunType::TestIn:
+            workerlist.push_back(std::make_unique<SinkLockFreeWorker>(
+                zmq_ctx, cfg, queue, shutdown_signal));
+            break;
         case RunType::TestOut:
             // receiver:
             for (int i=0; i<cfg.datasim_threads; ++i) {
@@ -118,9 +145,20 @@ std::vector<std::unique_ptr<ThreadWorker>> CacheServer::create(Config& cfg, void
             workerlist.push_back(std::make_unique<SenderLockFreeWorker>(
                 zmq_ctx, cfg, queue, shutdown_signal));
             break;
-        case RunType::TestIn:
-            workerlist.push_back(std::make_unique<SinkLockFreeWorker>(
-                zmq_ctx, cfg, queue, shutdown_signal));
+        case RunType::ZMQPULLinEJFatOut:
+            // receiver:
+            workerlist.push_back(std::make_unique<ReceiverLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            // sender:
+            workerlist.push_back(std::make_unique<EJFatSenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            break;
+        case RunType::TestInEJFatOut:
+            // receiver:
+            for (int i=0; i<cfg.dataSimulatorThreads; ++i) {
+                workerlist.push_back(std::make_unique<QueueGeneratorLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            }
+            // sender:
+            workerlist.push_back(std::make_unique<EJFatSenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            break;
         default:
             break;
     }

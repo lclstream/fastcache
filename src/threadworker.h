@@ -86,6 +86,17 @@ protected:
     void cleanup_metrics(std::thread::id tid, void* metrics_socket, std::string& metrics_path);
 };
 
+class QueueGeneratorLockFreeWorker : public LockFreeWorker {
+public:
+    QueueGeneratorLockFreeWorker(
+        void* ctx,
+        const Config& cfg,
+        MessageQueue& queue,
+        std::atomic<bool>& shutdown_signal
+    ) : LockFreeWorker(ctx, cfg, queue, false, shutdown_signal) {};
+    void run() override;
+};
+
 class ReceiverLockFreeWorker : public LockFreeWorker {
 public:
     ReceiverLockFreeWorker(
@@ -109,6 +120,8 @@ public:
     void run() override;
     virtual Action receive(void* socket);
     virtual int send(void* socket, zmq_msg_t* msg);
+protected:
+    static void free_msg(zmq_msg_t* msg);
 private:
     int socket_type;
 };
@@ -141,26 +154,133 @@ public:
     Action receive(void* socket) override;
 };
 
-class QueueGeneratorLockFreeWorker : public LockFreeWorker {
+class EJFatSenderLockFreeWorker : public SenderLockFreeWorker {
 public:
-    QueueGeneratorLockFreeWorker(
+    EJFatSenderLockFreeWorker(
         void* ctx,
         const Config& cfg,
         MessageQueue& queue,
         std::atomic<bool>& shutdown_signal
-    ) : LockFreeWorker(ctx, cfg, queue, false, shutdown_signal) {};
-    void run() override;
+    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown_signal, -1),
+        segmenter_flags([&cfg] {
+            e2sar::Segmenter::SegmenterFlags flags;
+            flags.useCP = cfg.ejfat_useLB;
+            flags.mtu = cfg.ejfat_mtu;
+            flags.sndSocketBufSize = cfg.ejfat_sndbufsize;
+            flags.rateGbps = cfg.ejfat_rateGbps;
+            flags.numSendSockets = cfg.ejfat_numSendSockets;
+            return flags;
+        }()),
+        uri(cfg.ejfat_uri, e2sar::EjfatURI::TokenType::instance, false),
+        segmenter(new e2sar::Segmenter(uri, cfg.ejfat_dataId, 0x00000001, segmenter_flags)) {
+            //std::vector<std::string> optimizations{"sendmmsg"};
+            //auto ropt = e2sar::Optimizations::select(optimizations);
+            //if (ropt.has_error()) {
+            //    std::cerr << "Error, failed to set optimization: " << ropt.error().message() << std::endl;
+            //    std::exit(1);
+            //}
+            std::cout << cfg.ejfat_uri << std::endl;
+            auto open_result = segmenter->openAndStart();
+            if (open_result.has_error()) {
+               std::cerr << "Error, failed to start segmenter: " << open_result.error().message() << std::endl;;
+               std::exit(1);
+            }
+            std::cout << "E2SAR Segmenter started successfully" << std::endl;
+        };
+    int send(void* socket, zmq_msg_t* msg) override;
+protected:
+    static void free_msg(boost::any arg);
+private:
+    e2sar::Segmenter::SegmenterFlags segmenter_flags;
+    e2sar::EjfatURI uri;
+    e2sar::Segmenter* segmenter;
+    //std::unique_ptr<e2sar::Segmenter> segmenter;
 };
 
-class SinkLockFreeWorker : public LockFreeWorker {
-public:
-    SinkLockFreeWorker(
-        void* ctx,
-        const Config& cfg,
-        MessageQueue& queue,
-        std::atomic<bool>& shutdown_signal
-    ) : LockFreeWorker(ctx, cfg, queue, true, shutdown_signal) {};
-    void run() override;
-};
+static void free_data(void* /*data*/, void* dataowner) {
+    delete static_cast<std::shared_ptr<std::vector<uint16_t>>*>(dataowner);
+}
+
+void QueueGeneratorLockFreeWorker::run() {
+    auto tid = std::this_thread::get_id();
+    std::cout << "Starting Data Generator Worker.. TID: " << tid << std::endl;
+    size_t datasize = cfg.simdata_size_mb * 512 * 1024;
+    size_t datasize_byte = datasize * sizeof(uint16_t);
+    auto data = std::make_shared<std::vector<uint16_t>>(datasize, 1);
+
+    while (1) {
+        if (shutdown_signal.load(std::memory_order_acquire)) break;
+        auto* qmsg = new zmq_msg_t();
+        auto* dataowner = new std::shared_ptr<std::vector<uint16_t>>(data);
+        zmq_msg_init_data(qmsg, data->data(), datasize_byte, free_data, dataowner);
+
+        while (!queue.push(qmsg)) {
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
+            if (shutdown_signal.load(std::memory_order_acquire)) {
+                zmq_msg_close(qmsg);
+                delete qmsg;
+                return;
+            }
+        }
+    }
+}
+
+void SinkLockFreeWorker::run() {
+    void* socket = nullptr;
+    auto tid = std::this_thread::get_id();
+
+    std::cout << "Starting Sink Worker.. TID: " << tid << std::endl;
+
+    socket = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
+    zmq_setsockopt(socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
+
+    bool started_work = false;
+    uint64_t total_bytes = 0;
+    auto last_print_time = std::chrono::steady_clock::now();
+
+    while (true) {
+        zmq_msg_t msg;
+        zmq_msg_init(&msg);
+
+        int rc = zmq_msg_recv(&msg, socket, 0);
+        if (rc < 0) {
+            zmq_msg_close(&msg);
+            int err = zmq_errno();
+            if (err == EAGAIN) {
+                if (shutdown_signal.load(std::memory_order_acquire)) break;
+                if (!started_work) continue;
+                if (timeout > 0) {
+                    std::cout << "No messages for " << static_cast<double>(timeout)/1000 << " seconds. Exiting." << std::endl;
+                }
+            } else {
+                std::cerr << "Error " << zmq_strerror(err) << " closing threads." << std::endl;
+            }
+            shutdown_signal.store(true, std::memory_order_release);
+            break;
+        }
+
+        started_work = true;
+        total_bytes += rc;
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_print_time).count();
+
+        if (elapsed >= 1000) {
+            double seconds = elapsed / 1000.0;
+            double gbs = (static_cast<double>(total_bytes) / (1024 * 1024 * 1024)) / seconds;
+            std::cout << gbs << " GB/s" << std::endl;
+            total_bytes = 0;
+            last_print_time = now;
+        }
+
+        zmq_msg_close(&msg);
+        if (shutdown_signal.load(std::memory_order_acquire)) {
+            break;
+        }
+    }
+  zmq_close(socket);
+}
+
+
+
 
 #endif
