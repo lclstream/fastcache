@@ -5,6 +5,7 @@
 #include <string>
 #include "config.h"
 #include <boost/lockfree/spsc_queue.hpp>
+#include <thread>
 #include <zmq.h>
 
 

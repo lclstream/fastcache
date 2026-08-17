@@ -149,7 +149,7 @@ Action ReplySenderLockFreeWorker::receive(void* socket) {
     return Action::Resume;
 }
 
-Action RouterSenderLockFreeWorker:: receive(void* socket) {
+Action RouterSenderLockFreeWorker::receive(void* socket) {
     zmq_msg_close(&id);
     zmq_msg_init(&id);
     int rc = zmq_msg_recv(&id, socket, 0);
@@ -230,7 +230,7 @@ void SenderLockFreeWorker::run() {
         if (rc < 0) break;
         if (cfg.metrics) {
             send_metrics(metrics_data, rc, metrics_socket);
-        }        
+        }
     }
     zmq_close(socket);
     if (cfg.metrics) {

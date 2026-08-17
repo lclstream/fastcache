@@ -43,7 +43,7 @@ void CacheServer::run() {
         });
     }
     while (!shutdown.load(std::memory_order_acquire)) {
-        if (cfg.verbose && cfg.type == 4) {
+        if (cfg.verbose && (cfg.type == 4 || cfg.type == 5 || cfg.type == 6)) {
             int num = queue.read_available();
             if (num > 1) {
                 std::cout << "Elements in queue: " << num << std::endl;
