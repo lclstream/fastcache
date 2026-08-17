@@ -22,3 +22,37 @@ target_link_libraries(lclstream-fastcache
     nlohmann_json::nlohmann_json
     Boost::lockfree
 )
+
+
+enable_testing()
+
+add_executable(threadworker_test
+    tests/test_threadworker.cpp
+)
+
+target_link_libraries(threadworker_test
+    PRIVATE
+    libzmq
+    nlohmann_json::nlohmann_json
+)
+
+add_test(
+    NAME threadworker_test
+    COMMAND threadworker_test
+)
+
+add_executable(lockfreeworker_test
+    tests/test_lockfreeworker.cpp
+)
+
+target_link_libraries(lockfreeworker_test
+    PRIVATE
+    libzmq
+    nlohmann_json::nlohmann_json
+    Boost::lockfree
+)
+
+add_test(
+    NAME lockfreeworker_test
+    COMMAND lockfreeworker_test
+)

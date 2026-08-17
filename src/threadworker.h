@@ -5,6 +5,7 @@
 #include <string>
 #include "config.h"
 #include <boost/lockfree/spsc_queue.hpp>
+#include <thread>
 #include <zmq.h>
 
 
@@ -16,6 +17,14 @@ struct SocketConfig {
     std::string url;
     bool isbind;
 };
+
+struct MetricsData {
+    uint64_t rc_count = 0;
+    uint64_t msg_count = 0;
+    uint64_t metrics_count = 0;
+};
+
+enum class Action { Continue, Break, Resume };
 
 class ThreadWorker {
 public:
@@ -52,9 +61,9 @@ private:
     bool bindoutgoing;
 };
 
-class LockfreeWorker : public ThreadWorker {
+class LockFreeWorker : public ThreadWorker {
 public:
-    LockfreeWorker(
+    LockFreeWorker(
         void* ctx,
         const Config& cfg,
         MessageQueue& queue,
@@ -64,14 +73,72 @@ public:
                                 sender(sender),
                                 queue(queue),
                                 timeout(cfg.timeout) {};
-    void run() override;
-    std::string create_metrics(uint64_t rc_count, uint64_t msg_count, uint64_t metrics_count);
+    //void run() override;
 protected:
     std::atomic<bool>& shutdown;
-private:
     bool sender;
     MessageQueue& queue;
     int timeout;
+protected:
+    std::string create_metrics(uint64_t rc_count, uint64_t msg_count, uint64_t metrics_count);
+    void send_metrics(MetricsData& metrics, int rc, void* metrics_socket);
+    void* create_metrics_socket(std::string& metrics_path);
+    void cleanup_metrics(std::thread::id tid, void* metrics_socket, std::string& metrics_path);
+};
+
+class ReceiverLockFreeWorker : public LockFreeWorker {
+public:
+    ReceiverLockFreeWorker(
+        void* ctx,
+        const Config& cfg,
+        MessageQueue& queue,
+        std::atomic<bool>& shutdown
+    ) : LockFreeWorker(ctx, cfg, queue, false, shutdown) {};
+    void run() override;
+};
+
+class SenderLockFreeWorker : public LockFreeWorker {
+public:
+    SenderLockFreeWorker(
+        void* ctx,
+        const Config& cfg,
+        MessageQueue& queue,
+        std::atomic<bool>& shutdown,
+        int socket_type = ZMQ_PUSH
+    ) : LockFreeWorker(ctx, cfg, queue, true, shutdown), socket_type(socket_type) {};
+    void run() override;
+    virtual Action receive(void* socket);
+    virtual int send(void* socket, zmq_msg_t* msg);
+private:
+    int socket_type;
+};
+
+class RouterSenderLockFreeWorker : public SenderLockFreeWorker {
+public:
+    RouterSenderLockFreeWorker(
+        void* ctx,
+        const Config& cfg,
+        MessageQueue& queue,
+        std::atomic<bool>& shutdown
+    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown, ZMQ_ROUTER) {};
+    ~RouterSenderLockFreeWorker() {
+        zmq_msg_close(&id); 
+    }
+    Action receive(void* socket) override;
+    int send(void* socket, zmq_msg_t* msg) override;
+public:
+    zmq_msg_t id;
+};
+
+class ReplySenderLockFreeWorker : public SenderLockFreeWorker {
+public:
+    ReplySenderLockFreeWorker(
+        void* ctx,
+        const Config& cfg,
+        MessageQueue& queue,
+        std::atomic<bool>& shutdown
+    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown, ZMQ_REP) {};
+    Action receive(void* socket) override;
 };
 
 class ConnectionTesterWorker : public ThreadWorker {
