@@ -7,6 +7,7 @@
 #include <boost/lockfree/spsc_queue.hpp>
 #include <thread>
 #include <zmq.h>
+#include <e2sar.hpp>
 
 
 using MessageQueue = boost::lockfree::spsc_queue<zmq_msg_t*, boost::lockfree::capacity<100>>;
@@ -139,6 +140,27 @@ public:
         std::atomic<bool>& shutdown
     ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown, ZMQ_REP) {};
     Action receive(void* socket) override;
+};
+
+class EJFatSenderLockFreeWorker : public SenderLockFreeWorker {
+public:
+    EJFatSenderLockFreeWorker(
+        void* ctx,
+        const Config& cfg,
+        MessageQueue& queue,
+        std::atomic<bool>& shutdown
+    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown, -1),
+        segmenter_flags(),
+        segmenter(cfg.outurl, 0x0001, 0x00000001, segmenter_flags) {
+            auto open_result = segmenter.openAndStart();
+            if (open_result.has_error()) {
+                std::cerr << "failed to start segmenter: " << open_result.error().message() << "\n";
+            }
+        };
+    int send(void* socket, zmq_msg_t* msg) override;
+private:
+    e2sar::Segmenter::SegmenterFlags segmenter_flags;
+    e2sar::Segmenter segmenter;
 };
 
 class ConnectionTesterWorker : public ThreadWorker {

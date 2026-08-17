@@ -198,6 +198,18 @@ int RouterSenderLockFreeWorker::send(void* socket, zmq_msg_t* msg) {
     return zmq_msg_send(msg, socket, 0);
 }
 
+int EJFatSenderLockFreeWorker::send(void* socket, zmq_msg_t* msg) {
+    u_int8_t* event_data = reinterpret_cast<u_int8_t*>(zmq_msg_data(msg));
+    std::size_t event_len = zmq_msg_size(msg);
+    auto send_result = segmenter.addToSendQueue(event_data, event_len);
+    auto send_stats = segmenter.getSendStats();
+    if (send_stats.errCnt != 0) {
+        std::cerr << "error sending event frames: " << strerror(send_stats.lastErrno) << std::endl;
+        return -1;
+    }
+    return static_cast<int>(event_len);
+}
+
 void SenderLockFreeWorker::run() {
     void* socket;
     void* metrics_socket = nullptr;
@@ -206,8 +218,10 @@ void SenderLockFreeWorker::run() {
     auto tid = std::this_thread::get_id();
 
     std::cout << "Starting Lockfree forward. Sender TID: " << tid << std::endl;
-    socket = create_socket(zmq_ctx, {socket_type, cfg.hwm, cfg.outurl, true});
-    zmq_setsockopt(socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
+    if (socket_type > 0) {
+        socket = create_socket(zmq_ctx, {socket_type, cfg.hwm, cfg.outurl, true});
+        zmq_setsockopt(socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
+    }
     if (cfg.metrics) {
         metrics_socket = create_metrics_socket(metrics_path);
     }
@@ -232,7 +246,9 @@ void SenderLockFreeWorker::run() {
             send_metrics(metrics_data, rc, metrics_socket);
         }
     }
-    zmq_close(socket);
+    if (socket_type > 0) {
+        zmq_close(socket);
+    }
     if (cfg.metrics) {
         cleanup_metrics(tid, metrics_socket, metrics_path);
     }
