@@ -7,7 +7,6 @@
 #include <boost/lockfree/spsc_queue.hpp>
 #include <thread>
 #include <zmq.h>
-#include <e2sar.hpp>
 
 
 using MessageQueue = boost::lockfree::spsc_queue<zmq_msg_t*, boost::lockfree::capacity<100>>;
@@ -69,14 +68,14 @@ public:
         const Config& cfg,
         MessageQueue& queue,
         bool sender,
-        std::atomic<bool>& shutdown
-    ) : ThreadWorker(ctx, cfg), shutdown(shutdown),
+        std::atomic<bool>& shutdown_signal
+    ) : ThreadWorker(ctx, cfg), shutdown_signal(shutdown_signal),
                                 sender(sender),
                                 queue(queue),
                                 timeout(cfg.timeout) {};
     //void run() override;
 protected:
-    std::atomic<bool>& shutdown;
+    std::atomic<bool>& shutdown_signal;
     bool sender;
     MessageQueue& queue;
     int timeout;
@@ -87,14 +86,25 @@ protected:
     void cleanup_metrics(std::thread::id tid, void* metrics_socket, std::string& metrics_path);
 };
 
+class QueueGeneratorLockFreeWorker : public LockFreeWorker {
+public:
+    QueueGeneratorLockFreeWorker(
+        void* ctx,
+        const Config& cfg,
+        MessageQueue& queue,
+        std::atomic<bool>& shutdown_signal
+    ) : LockFreeWorker(ctx, cfg, queue, false, shutdown_signal) {};
+    void run() override;
+};
+
 class ReceiverLockFreeWorker : public LockFreeWorker {
 public:
     ReceiverLockFreeWorker(
         void* ctx,
         const Config& cfg,
         MessageQueue& queue,
-        std::atomic<bool>& shutdown
-    ) : LockFreeWorker(ctx, cfg, queue, false, shutdown) {};
+        std::atomic<bool>& shutdown_signal
+    ) : LockFreeWorker(ctx, cfg, queue, false, shutdown_signal) {};
     void run() override;
 };
 
@@ -104,12 +114,14 @@ public:
         void* ctx,
         const Config& cfg,
         MessageQueue& queue,
-        std::atomic<bool>& shutdown,
+        std::atomic<bool>& shutdown_signal,
         int socket_type = ZMQ_PUSH
-    ) : LockFreeWorker(ctx, cfg, queue, true, shutdown), socket_type(socket_type) {};
+    ) : LockFreeWorker(ctx, cfg, queue, true, shutdown_signal), socket_type(socket_type) {};
     void run() override;
     virtual Action receive(void* socket);
     virtual int send(void* socket, zmq_msg_t* msg);
+protected:
+    static void free_msg(zmq_msg_t* msg);
 private:
     int socket_type;
 };
@@ -120,8 +132,8 @@ public:
         void* ctx,
         const Config& cfg,
         MessageQueue& queue,
-        std::atomic<bool>& shutdown
-    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown, ZMQ_ROUTER) {};
+        std::atomic<bool>& shutdown_signal
+    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown_signal, ZMQ_ROUTER) {};
     ~RouterSenderLockFreeWorker() {
         zmq_msg_close(&id); 
     }
@@ -137,8 +149,8 @@ public:
         void* ctx,
         const Config& cfg,
         MessageQueue& queue,
-        std::atomic<bool>& shutdown
-    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown, ZMQ_REP) {};
+        std::atomic<bool>& shutdown_signal
+    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown_signal, ZMQ_REP) {};
     Action receive(void* socket) override;
 };
 
@@ -148,26 +160,41 @@ public:
         void* ctx,
         const Config& cfg,
         MessageQueue& queue,
-        std::atomic<bool>& shutdown
-    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown, -1),
-        segmenter_flags(),
-        segmenter(cfg.outurl, 0x0001, 0x00000001, segmenter_flags) {
-            auto open_result = segmenter.openAndStart();
+        std::atomic<bool>& shutdown_signal
+    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown_signal, -1),
+        segmenter_flags([&cfg] {
+            e2sar::Segmenter::SegmenterFlags flags;
+            flags.useCP = cfg.ejfat_useLB;
+            flags.mtu = cfg.ejfat_mtu;
+            flags.sndSocketBufSize = cfg.ejfat_sndbufsize;
+            flags.rateGbps = cfg.ejfat_rateGbps;
+            flags.numSendSockets = cfg.ejfat_numSendSockets;
+            return flags;
+        }()),
+        uri(cfg.ejfat_uri, e2sar::EjfatURI::TokenType::instance, false),
+        segmenter(new e2sar::Segmenter(uri, cfg.ejfat_dataId, 0x00000001, segmenter_flags)) {
+            //std::vector<std::string> optimizations{"sendmmsg"};
+            //auto ropt = e2sar::Optimizations::select(optimizations);
+            //if (ropt.has_error()) {
+            //    std::cerr << "Error, failed to set optimization: " << ropt.error().message() << std::endl;
+            //    std::exit(1);
+            //}
+            std::cout << cfg.ejfat_uri << std::endl;
+            auto open_result = segmenter->openAndStart();
             if (open_result.has_error()) {
-                std::cerr << "failed to start segmenter: " << open_result.error().message() << "\n";
+               std::cerr << "Error, failed to start segmenter: " << open_result.error().message() << std::endl;;
+               std::exit(1);
             }
+            std::cout << "E2SAR Segmenter started successfully" << std::endl;
         };
     int send(void* socket, zmq_msg_t* msg) override;
+protected:
+    static void free_msg(boost::any arg);
 private:
     e2sar::Segmenter::SegmenterFlags segmenter_flags;
-    e2sar::Segmenter segmenter;
-};
-
-class ConnectionTesterWorker : public ThreadWorker {
-public:
-    ConnectionTesterWorker(void* ctx, const Config& cfg)
-        : ThreadWorker(ctx, cfg) {};
-    void run() override;
+    e2sar::EjfatURI uri;
+    e2sar::Segmenter* segmenter;
+    //std::unique_ptr<e2sar::Segmenter> segmenter;
 };
 
 #endif

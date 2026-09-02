@@ -7,7 +7,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(ZeroMQ CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
-find_package(Boost CONFIG REQUIRED COMPONENTS lockfree)
+find_package(Boost CONFIG REQUIRED COMPONENTS lockfree url program_options chrono thread filesystem log)
+find_package(protobuf REQUIRED)
+find_package(gRPC REQUIRED)
+
+include(FetchContent)
+
+FetchContent_Declare(e2sar
+    GIT_REPOSITORY https://github.com/JeffersonLab/E2SAR.git
+    GIT_TAG main
+)
+FetchContent_MakeAvailable(e2sar)
 
 add_executable(lclstream-fastcache
     src/fastcache.cpp
@@ -21,6 +31,8 @@ target_link_libraries(lclstream-fastcache
     libzmq
     nlohmann_json::nlohmann_json
     Boost::lockfree
+    e2sar::e2sar
+    gRPC::grpc++
 )
 
 
