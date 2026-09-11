@@ -20,9 +20,9 @@
     "useLB": true,
     "mtu": 9000,
     "sndbufsize": 2147483647,
-    "rateGbps": 25.0,
-    "numSendSockets": 16,
+    "rateGbps": -15.0,
+    "numSendSockets": 8,
     "dataId": 1,
-    "dataSimulatorThreads": 2
+    "dataSimulatorThreads": 1
   }
 }

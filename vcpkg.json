@@ -1,27 +1,14 @@
 {
+  "name": "lclstream-fastcache",
+  "version": "0.2.0",
   "dependencies": [
     "boost-lockfree",
-    "cppzmq",
-    "nlohmann-json",
-    "boost-url",
-    "boost-program-options",
-    "boost-chrono",
-    "boost-thread",
-    "boost-filesystem",
-    "boost-log",
-    "grpc"
+    "zeromq",
+    "nlohmann-json"
   ],
   "overrides": [
     { "name": "zeromq", "version": "4.3.5", "port-version": 3 },
-    { "name": "cppzmq", "version": "4.11.0" },
     { "name": "nlohmann-json", "version": "3.12.0", "port-version": 2 },
-    { "name": "boost-lockfree", "version": "1.91.0" },
-    { "name": "boost-url", "version": "1.89.0" },
-    { "name": "boost-program-options", "version": "1.89.0" },
-    { "name": "boost-chrono", "version": "1.89.0" },
-    { "name": "boost-thread", "version": "1.89.0" },
-    { "name": "boost-filesystem", "version": "1.89.0" },
-    { "name": "boost-log", "version": "1.89.0" },
-    { "name": "grpc", "version": "1.74.1" }
+    { "name": "boost-lockfree", "version": "1.89.0" }
   ]
 }

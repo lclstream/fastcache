@@ -10,6 +10,8 @@ Multi threaded cache that runs on the data transfer nodes to stream data to exte
 
 ## Build
 
+Set `GRPC_PATH` and `EJFAT_PATH`env variables to gRPC and EJFat paths.
+
 ```sh
 
 cmake  --preset  default
