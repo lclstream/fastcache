@@ -8,7 +8,7 @@ CacheServer::CacheServer(Config &config, std::atomic<bool>& shutdown_signal)
     zmq_ctx = zmq_ctx_new();
     zmq_ctx_set(zmq_ctx, ZMQ_IO_THREADS, cfg.zmq_io_threads);
 
-    std::cout << "\n<<< Fastcache v0.3.0 >>> " << std::endl;
+    std::cout << "\n<<< Fastcache v0.2.0 >>> " << std::endl;
     std::cout << "\n----- General config ----- " << std::endl;
     std::cout << "zmq io threads:    " << cfg.zmq_io_threads << std::endl;
     std::cout << "Helper threads:    " << cfg.helper_threads << std::endl;

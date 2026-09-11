@@ -42,7 +42,7 @@ TEST_OBJS := $(TEST_SRCS:$(TEST_DIR)/%.cpp=$(BUILD_DIR)/tests/%.o)
 
 TARGET := lclstream-fastcache
 TEST_TARGETS := $(TEST_SRCS:$(TEST_DIR)/%.cpp=%)
-RECEIVER := receiver
+#RECEIVER := receiver
 
 FCOBJS := $(filter-out $(BUILD_DIR)/fastcache.o, $(OBJS))
 
@@ -55,11 +55,11 @@ test: $(TEST_TARGETS)
 	done
 	@echo "=== All tests passed OK! ==="
 
-build/receiver.o: src/receiver/receiver.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+#build/receiver.o: src/receiver/receiver.cpp
+#	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-$(RECEIVER): build/receiver.o
-	$(CXX) $< $(LDFLAGS) $(LDLIBS) -lgpr -labsl_cord -labsl_cordz_info -labsl_log_internal_check_op -labsl_log_internal_message -labsl_log_internal_nullguard -labsl_strings -labsl_cordz_functions -o $@
+#$(RECEIVER): build/receiver.o
+#	$(CXX) $< $(LDFLAGS) $(LDLIBS) -lgpr -labsl_cord -labsl_cordz_info -labsl_log_internal_check_op -labsl_log_internal_message -labsl_log_internal_nullguard -labsl_strings -labsl_cordz_functions -o $@
 
 $(TARGET): $(OBJS)
 	$(CXX) $(OBJS) $(LDFLAGS) $(LDLIBS) -o $(TARGET)
