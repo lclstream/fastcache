@@ -1,12 +1,28 @@
 {
-  "inurl": "tcp://sdfdtn002:5000",
-  "outurl": "tcp://sdfdtn002:5555",
-  "io_threads": 16,
-  "hwm": 10,
-  "timeout": -1,
-  "verbose": true,
-  "metrics": false,
-  "metrics_interval": 5000,
-  "cache_id": 5,
-  "type": 6
+  "fastcache": {
+    "inurl": "tcp://sdfdtn001:12121",
+    "outurl": "tcp://sdfiana024:12121",
+    "workerurl": "inproc://worker",
+    "type": 8,
+    "helper_threads": 8,
+    "zmq_io_threads": 1,
+    "hwm": 10,
+    "timeout": -1,
+    "verbose": true,
+    "dataMB": 32
+  },
+  "metrics": {
+    "metrics": false,
+    "cache_id": 5,
+    "metrics_interval": 5000
+  },
+  "ejfat": {
+    "useLB": true,
+    "mtu": 9000,
+    "sndbufsize": 2147483647,
+    "rateGbps": -15.0,
+    "numSendSockets": 8,
+    "dataId": 1,
+    "dataSimulatorThreads": 1
+  }
 }
