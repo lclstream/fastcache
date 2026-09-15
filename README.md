@@ -95,3 +95,5 @@ Url for the inproc worker threads to use for communication.
 `dataId`: EJFat data source ID number. Use different with multiple senders.
 
 `dataSimulatorThreads`: Number of data simulator worker threads launched.
+
+`queueSize`: EJFat event queue size (smaller is better if the events are large). Example: 40

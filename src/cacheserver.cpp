@@ -33,6 +33,7 @@ CacheServer::CacheServer(Config &config, std::atomic<bool>& shutdown_signal)
         std::cout << "Send Sockets:      " << cfg.ejfat_numSendSockets << std::endl;
         std::cout << "Data sim threads:  " << cfg.dataSimulatorThreads << std::endl;
         std::cout << "Data ID:           " << cfg.ejfat_dataId << "\n" << std::endl;
+        std::cout << "Event Queue Size:  " << cfg.ejfat_queueSize << "\n" << std::endl;
     }
 }
 

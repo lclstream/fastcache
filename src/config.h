@@ -30,6 +30,7 @@ struct Config
     float ejfat_rateGbps;                         // speed limit (can cause small bursts)
     size_t ejfat_numSendSockets;                  // ejfat send sockets
     uint16_t ejfat_dataId;                        // data id (note: might want to have this loop at some point)
+    uint16_t ejfat_queueSize;                     // ejfat internal lockfree queue size
     uint16_t dataSimulatorThreads;                // number of threads simulating data
     std::string ejfat_uri = "";                   // ejfat instance URI obtained from the load balancer
     uint16_t dataMB;                              // simulated message size

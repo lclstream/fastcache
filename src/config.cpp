@@ -33,10 +33,14 @@ void load_config(const std::string& fname, Config& cfg) {
 
     cfg.ejfat_useLB = ejfat_opts.value("ejfat_useLB", true);
     cfg.ejfat_mtu = ejfat_opts.value("mtu", 9000);
-    cfg.ejfat_sndbufsize = ejfat_opts.value("sndbufsize", 16777216);
+    // setsockopt doubles the buffer size (this is assuming wmem_max is 2GB)
+    int ejfat_rawBufSize = ejfat_opts.value("sndbufsize", 16777216);
+    cfg.ejfat_sndbufsize = (ejfat_rawBufSize > 1073741823LL) ?
+                                        (ejfat_rawBufSize / 2) : (ejfat_rawBufSize);
     cfg.ejfat_rateGbps = ejfat_opts.value("rateGbps", -1.0);
     cfg.ejfat_numSendSockets = ejfat_opts.value("numSendSockets", 8);
     cfg.dataSimulatorThreads = ejfat_opts.value("dataSimulatorThreads", 1);
+    cfg.ejfat_queueSize = ejfat_opts.value("queueSize", 40);
     cfg.ejfat_dataId = ejfat_opts.value("dataId", 1);
 
     if (cfg.type == 7 || cfg.type == 8) {
