@@ -8,12 +8,6 @@ CacheServer::CacheServer(Config &config, std::atomic<bool>& shutdown_signal)
     zmq_ctx = zmq_ctx_new();
     zmq_ctx_set(zmq_ctx, ZMQ_IO_THREADS, cfg.zmq_io_threads);
 
-<<<<<<< HEAD
-    std::cout << "Using " << cfg.io_threads << " zmq io threads." << std::endl;
-    std::cout << "Trying to use " << cfg.helper_threads << " helper_threads." << std::endl;
-    std::cout << "IN URL: " << cfg.inurl << " OUT URL: " << cfg.outurl << std::endl;
-    std::cout << "Type: " << static_cast<int>(cfg.type) << "." << std::endl;
-=======
     std::cout << "\n<<< Fastcache v0.2.0 >>> " << std::endl;
     std::cout << "\n----- General config ----- " << std::endl;
     std::cout << "zmq io threads:    " << cfg.zmq_io_threads << std::endl;
@@ -21,7 +15,6 @@ CacheServer::CacheServer(Config &config, std::atomic<bool>& shutdown_signal)
     std::cout << "IN URL:            " << cfg.inurl << std::endl;
     std::cout << "OUT URL:           " << cfg.outurl << std::endl;
     std::cout << "Type:              " << cfg.type << std::endl;
->>>>>>> e76c8a4 (Added basic EJFat worker)
     if (cfg.timeout > 0) {
         std::cout << "Timeout:           " << cfg.timeout << " ms." << std::endl;
     }
@@ -40,6 +33,7 @@ CacheServer::CacheServer(Config &config, std::atomic<bool>& shutdown_signal)
         std::cout << "Send Sockets:      " << cfg.ejfat_numSendSockets << std::endl;
         std::cout << "Data sim threads:  " << cfg.dataSimulatorThreads << std::endl;
         std::cout << "Data ID:           " << cfg.ejfat_dataId << "\n" << std::endl;
+        std::cout << "Event Queue Size:  " << cfg.ejfat_queueSize << "\n" << std::endl;
     }
 }
 

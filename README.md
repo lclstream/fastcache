@@ -109,3 +109,5 @@ Outgoing ZMQ URL where the receivers can connect to.
 `dataId`: EJFat data source ID number. Use different with multiple senders.
 
 `dataSimulatorThreads`: Number of data simulator worker threads launched.
+
+`queueSize`: EJFat event queue size (smaller is better if the events are large). Example: 40

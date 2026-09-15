@@ -169,6 +169,7 @@ public:
             flags.sndSocketBufSize = cfg.ejfat_sndbufsize;
             flags.rateGbps = cfg.ejfat_rateGbps;
             flags.numSendSockets = cfg.ejfat_numSendSockets;
+            flags.eventQueueSize = cfg.ejfat_queueSize;
             return flags;
         }()),
         uri(cfg.ejfat_uri, e2sar::EjfatURI::TokenType::instance, false),
