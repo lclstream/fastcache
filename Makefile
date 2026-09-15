@@ -1,6 +1,7 @@
 #CONDA_PREFIX := /sdf/group/lcls/ds/ana/sw/conda2/inst/envs/xpp_drp_cpu_311_dev
 CONDA_PREFIX := /sdf/group/lcls/ds/ana/sw/conda_bld/kmecseki/.conda/envs/ejfat-dev
-EJFAT_PREFIX := /sdf/home/k/kmecseki/projects/EJFat
+#EJFAT_PREFIX := /sdf/home/k/kmecseki/projects/EJFat
+EJFAT_PREFIX := /sdf/scratch/users/k/kmecseki/EJFat/E2SAR-0.4.0rc1/install
 GRPC_PREFIX := /sdf/home/k/kmecseki/opt/grpc2
 
 #BOOST_PREFIX := /sdf/scratch/users/k/kmecseki/boost
@@ -9,7 +10,7 @@ CONDA_LIBS := $(CONDA_PREFIX)/lib
 #BOOST_LIBS := $(BOOST_PREFIX)/lib
 GRPC_LIBS := $(GRPC_PREFIX)/lib
 GRPC_LIBS2 := $(GRPC_PREFIX)/lib64
-EJFAT_LIBS := $(EJFAT_PREFIX)/builddir/src
+EJFAT_LIBS := $(EJFAT_PREFIX)/lib64
 
 CONDA_INC := $(CONDA_PREFIX)/include
 #BOOST_INC := $(BOOST_PREFIX)/include
@@ -42,7 +43,7 @@ TEST_OBJS := $(TEST_SRCS:$(TEST_DIR)/%.cpp=$(BUILD_DIR)/tests/%.o)
 
 TARGET := lclstream-fastcache
 TEST_TARGETS := $(TEST_SRCS:$(TEST_DIR)/%.cpp=%)
-#RECEIVER := receiver
+RECEIVER := receiver
 
 FCOBJS := $(filter-out $(BUILD_DIR)/fastcache.o, $(OBJS))
 
@@ -55,11 +56,11 @@ test: $(TEST_TARGETS)
 	done
 	@echo "=== All tests passed OK! ==="
 
-#build/receiver.o: src/receiver/receiver.cpp
-#	$(CXX) $(CXXFLAGS) -c $< -o $@
+build/receiver.o: src/receiver/receiver.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-#$(RECEIVER): build/receiver.o
-#	$(CXX) $< $(LDFLAGS) $(LDLIBS) -lgpr -labsl_cord -labsl_cordz_info -labsl_log_internal_check_op -labsl_log_internal_message -labsl_log_internal_nullguard -labsl_strings -labsl_cordz_functions -o $@
+$(RECEIVER): build/receiver.o
+	$(CXX) $< $(LDFLAGS) $(LDLIBS) -lgpr -labsl_cord -labsl_cordz_info -labsl_log_internal_check_op -labsl_log_internal_message -labsl_log_internal_nullguard -labsl_strings -labsl_cordz_functions -o $@
 
 $(TARGET): $(OBJS)
 	$(CXX) $(OBJS) $(LDFLAGS) $(LDLIBS) -o $(TARGET)

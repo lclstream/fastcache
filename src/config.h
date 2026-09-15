@@ -13,7 +13,7 @@ struct Config
     std::string inurl;
     std::string outurl;
     std::string workerurl = "inproc://worker";
-    int type;
+    uint16_t type;
     unsigned helper_threads;
     int zmq_io_threads;
     int hwm;
@@ -28,6 +28,7 @@ struct Config
     float ejfat_rateGbps;
     size_t ejfat_numSendSockets;
     uint16_t ejfat_dataId;
+    uint16_t ejfat_queueSize;
     uint16_t dataSimulatorThreads;
     std::string ejfat_uri = "";
     uint16_t dataMB;
