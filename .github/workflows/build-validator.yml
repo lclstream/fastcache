@@ -1,0 +1,52 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      VCPKG_ROOT: /opt/vcpkg
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build build-essential pkg-config \
+            curl zip unzip tar git ca-certificates
+
+      - name: Cache vcpkg binary packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg
+          key: vcpkg-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
+      - name: Install vcpkg
+        run: |
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg $VCPKG_ROOT
+          $VCPKG_ROOT/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Configure
+        run: |
+          VCPKG_BINARY_SOURCES="clear;files,$HOME/.cache/vcpkg,readwrite" \
+          cmake --preset default
+
+      - name: Build
+        run: cmake --build build --preset default
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
