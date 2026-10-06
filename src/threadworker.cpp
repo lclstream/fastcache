@@ -221,7 +221,7 @@ void SenderLockFreeWorker::run() {
         zmq_msg_t* msg = nullptr;
         while (!queue.pop(msg)) {
             if (shutdown.load(std::memory_order_acquire) && queue.read_available() == 0) break;
-            std::this_thread::yield();
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
         if (shutdown.load(std::memory_order_acquire) && msg == nullptr) break;
         int rc = send(socket, msg);
