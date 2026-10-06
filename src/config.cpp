@@ -19,6 +19,7 @@ void load_config(const std::string& fname, Config& cfg) {
     cfg.io_threads = jobj.value("io_threads", 16);
     cfg.hwm = jobj.value("hwm", 10);
     cfg.timeout = jobj.value("timeout", -1);
+    cfg.expected_producers = jobj.value("expected_producers", 1);
     cfg.verbose = jobj.value("verbose", false);
     cfg.metrics = jobj.value("metrics", false);
     cfg.metrics_interval = jobj.value("metrics_interval", 10000);
