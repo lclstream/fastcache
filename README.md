@@ -28,6 +28,10 @@ cmake  --build  --preset  default
 
 Config keys: `inurl`, `outurl`, `num_workers`, `io_threads`, `hwm`.
 
+## Shutdown sequence
+
+Normal termination is triggered when all expected upstream producers have disconnected. The receiver thread monitors producer connection events: once it has seen at least `expected_producers` connections and the active producer count drops to zero, it signals shutdown. The sender thread completes delivery of any messages already in the queue before exiting, at which point it closes the outbound socket. Downstream consumers waiting on that socket see the close as their own termination signal. A `timeout` value greater than zero provides a fallback: if producers were seen but the message stream goes silent for longer than the configured interval, the same shutdown path is triggered.
+
 ## Config
 
 This section describes the meaning of each field in the provided configuration.
@@ -57,7 +61,9 @@ Outgoing ZMQ URL where the receivers can connect to.
   
 `hwm`: High water mark, limits queued messages.
 
-`timeout`: Set in milliseconds. To block forever set to -1. Only counted once the receiver thread started working.
+`timeout`: Set in milliseconds. To block forever set to -1. Acts as a fallback: if producers have been seen but no message arrives within this window, the process exits. Not counted until at least one producer has connected.
+
+`expected_producers`: Number of upstream producers that must connect before a disconnection can trigger shutdown. Defaults to 1. This prevents an early or stray disconnect from terminating the cache before the intended producers have joined.
 
 `verbose`: Enables logging of queue size.
 

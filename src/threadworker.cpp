@@ -221,7 +221,7 @@ void SenderLockFreeWorker::run() {
         zmq_msg_t* msg = nullptr;
         while (!queue.pop(msg)) {
             if (shutdown.load(std::memory_order_acquire) && queue.read_available() == 0) break;
-            std::this_thread::yield();
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
         if (shutdown.load(std::memory_order_acquire) && msg == nullptr) break;
         int rc = send(socket, msg);
@@ -240,6 +240,7 @@ void SenderLockFreeWorker::run() {
 
 void ReceiverLockFreeWorker::run() {
     void* socket;
+    void* monitor_socket;
     void* metrics_socket = nullptr;
     std::string metrics_path;
     MetricsData metrics_data;
@@ -247,46 +248,112 @@ void ReceiverLockFreeWorker::run() {
 
     std::cout << "Starting Lockfree forward. Receiver TID: " << tid << std::endl;
     socket = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
-    zmq_setsockopt(socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
+
+    zmq_socket_monitor(socket, "inproc://monitor-recv",
+                       ZMQ_EVENT_ACCEPTED | ZMQ_EVENT_DISCONNECTED);
+    monitor_socket = zmq_socket(zmq_ctx, ZMQ_PAIR);
+    zmq_connect(monitor_socket, "inproc://monitor-recv");
+
     if (cfg.metrics) {
         metrics_socket = create_metrics_socket(metrics_path);
     }
-    bool started_work = false;
-    while (1) {
-        zmq_msg_t msg;
-        zmq_msg_init(&msg);
 
-        int rc = zmq_msg_recv(&msg, socket, 0);
+    int prod_seen = 0;
+    int producers = 0;
+
+    // Shutdown chain:
+    // 1. Last expected producer disconnects → shutdown=true → receiver exits
+    // 2. Sender drains queue → exits → closes PUSH socket
+    // 3. Downstream consumer sees PUSH socket close → exits
+    zmq_pollitem_t items[2] = {
+        {socket,         0, ZMQ_POLLIN, 0},
+        {monitor_socket, 0, ZMQ_POLLIN, 0},
+    };
+
+    while (1) {
+        if (shutdown.load(std::memory_order_acquire)) break;
+
+        int rc = zmq_poll(items, 2, timeout);
         if (rc < 0) {
-            zmq_msg_close(&msg);
             int err = zmq_errno();
-            if (err == EAGAIN) {
+            if (err == EINTR) {
                 if (shutdown.load(std::memory_order_acquire)) break;
-                if (!started_work) continue;
-                if (timeout > 0) {
-                    std::cout << "No messages for " << static_cast<double>(timeout)/1000 << " seconds. Exiting." << std::endl;
-                }
-            } else {
-                std::cerr << "Error, " << zmq_strerror(err) << " closing threads." << std::endl;
+                continue;
             }
+            std::cerr << "Error, " << zmq_strerror(err) << " closing threads." << std::endl;
             shutdown.store(true, std::memory_order_release);
             break;
-        } else if (cfg.metrics) {
-            send_metrics(metrics_data, rc, metrics_socket);
         }
-        started_work = true;
-        zmq_msg_t* qmsg = new zmq_msg_t();
-        zmq_msg_init(qmsg);
-        zmq_msg_move(qmsg, &msg); 
-        while (!queue.push(qmsg)) {
-            std::this_thread::sleep_for(std::chrono::microseconds(50));
+
+        if (rc == 0) {
+            // Timeout fallback: if producers were seen but went quiet, treat as done.
+            if (timeout > 0 && prod_seen > 0) {
+                std::cout << "No messages for " << static_cast<double>(timeout)/1000
+                          << " seconds. Exiting." << std::endl;
+                shutdown.store(true, std::memory_order_release);
+                break;
+            }
+            continue;
         }
-        if (shutdown.load(std::memory_order_acquire)) {
-            break;
+
+        // Monitor event: producer connected or disconnected.
+        if (items[1].revents & ZMQ_POLLIN) {
+            zmq_msg_t event_msg;
+            zmq_msg_init(&event_msg);
+            zmq_msg_recv(&event_msg, monitor_socket, 0);
+            uint16_t event = *(uint16_t *)zmq_msg_data(&event_msg);
+            zmq_msg_close(&event_msg);
+            zmq_msg_t addr_msg;
+            zmq_msg_init(&addr_msg);
+            zmq_msg_recv(&addr_msg, monitor_socket, 0);
+            zmq_msg_close(&addr_msg);
+
+            if (event == ZMQ_EVENT_ACCEPTED) {
+                producers++;
+                prod_seen++;
+                std::cout << "Producer connected ("
+                          << producers << " active, " << prod_seen << " seen)." << std::endl;
+            } else if (event == ZMQ_EVENT_DISCONNECTED) {
+                producers--;
+                std::cout << "Producer disconnected ("
+                          << producers << " active, " << prod_seen << " seen)." << std::endl;
+                // Step 1 of shutdown chain: all expected producers have connected
+                // and are now gone.
+                if (producers <= 0 && prod_seen >= cfg.expected_producers) {
+                    shutdown.store(true, std::memory_order_release);
+                    break;
+                }
+            }
+        }
+
+        // Data available: receive and enqueue.
+        if (items[0].revents & ZMQ_POLLIN) {
+            zmq_msg_t msg;
+            zmq_msg_init(&msg);
+            int rc = zmq_msg_recv(&msg, socket, ZMQ_DONTWAIT);
+            if (rc < 0) {
+                zmq_msg_close(&msg);
+                int err = zmq_errno();
+                if (err == EAGAIN) continue;
+                std::cerr << "Error, " << zmq_strerror(err) << " closing threads." << std::endl;
+                shutdown.store(true, std::memory_order_release);
+                break;
+            }
+            if (cfg.metrics) {
+                send_metrics(metrics_data, rc, metrics_socket);
+            }
+            zmq_msg_t* qmsg = new zmq_msg_t();
+            zmq_msg_init(qmsg);
+            zmq_msg_move(qmsg, &msg);
+            while (!queue.push(qmsg)) {
+                std::this_thread::sleep_for(std::chrono::microseconds(50));
+            }
+            if (shutdown.load(std::memory_order_acquire)) break;
         }
     }
 
     zmq_close(socket);
+    zmq_close(monitor_socket);
     if (cfg.metrics) {
         cleanup_metrics(tid, metrics_socket, metrics_path);
     }

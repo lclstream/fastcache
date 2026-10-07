@@ -19,6 +19,7 @@ struct Config
     int io_threads;
     int hwm;
     int timeout;
+    int expected_producers;
     bool verbose;
     bool metrics;
     uint32_t metrics_interval;
