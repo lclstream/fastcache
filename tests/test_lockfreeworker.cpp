@@ -34,9 +34,9 @@ void Test_SenderLockFreeWorker_receive() {
     void* zmq_ctx = zmq_ctx_new();
     Config cfg;
     boost::lockfree::spsc_queue<zmq_msg_t*, boost::lockfree::capacity<100>> queue;
-    std::atomic<bool> shutdown{false};
+    std::atomic<bool> shutdown_signal{false};
 
-    TestSenderWorker worker(zmq_ctx, cfg, queue, shutdown, ZMQ_PUSH);
+    TestSenderWorker worker(zmq_ctx, cfg, queue, shutdown_signal, ZMQ_PUSH);
     Action act = worker.receive(nullptr);
     assert(act == Action::Resume);
 
@@ -47,9 +47,9 @@ void Test_ReplySenderLockFreeWorker_receive1() {
     void* zmq_ctx = zmq_ctx_new();
     Config cfg;
     boost::lockfree::spsc_queue<zmq_msg_t*, boost::lockfree::capacity<100>> queue;
-    std::atomic<bool> shutdown{false};
+    std::atomic<bool> shutdown_signal{false};
 
-    TestReplySenderWorker worker(zmq_ctx, cfg, queue, shutdown);
+    TestReplySenderWorker worker(zmq_ctx, cfg, queue, shutdown_signal);
 
     void* req_socket = zmq_socket(zmq_ctx, ZMQ_REQ);
     void* rep_socket = zmq_socket(zmq_ctx, ZMQ_REP);
@@ -71,21 +71,21 @@ void Test_ReplySenderLockFreeWorker_receive2() {
     void* zmq_ctx = zmq_ctx_new();
     Config cfg;
     boost::lockfree::spsc_queue<zmq_msg_t*, boost::lockfree::capacity<100>> queue;
-    std::atomic<bool> shutdown{false};
+    std::atomic<bool> shutdown_signal{false};
 
-    TestReplySenderWorker worker(zmq_ctx, cfg, queue, shutdown);
+    TestReplySenderWorker worker(zmq_ctx, cfg, queue, shutdown_signal);
 
     void* rep_socket = zmq_socket(zmq_ctx, ZMQ_REP);
     int timeout = 10;
     zmq_setsockopt(rep_socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
     assert(zmq_bind(rep_socket, "inproc://reply_test") == 0);
 
-    // 1. without shutdown -> Action::Continue
+    // 1. without shutdown_signal -> Action::Continue
     Action act = worker.receive(rep_socket);
     assert(act == Action::Continue);
 
-    // 2. with shutdown -> Action::Break
-    shutdown.store(true, std::memory_order_release);
+    // 2. with shutdown_signal -> Action::Break
+    shutdown_signal.store(true, std::memory_order_release);
     act = worker.receive(rep_socket);
     assert(act == Action::Break);
 
@@ -97,9 +97,9 @@ void Test_RouterSenderLockFreeWorker_receive() {
     void* zmq_ctx = zmq_ctx_new();
     Config cfg;
     boost::lockfree::spsc_queue<zmq_msg_t*, boost::lockfree::capacity<100>> queue;
-    std::atomic<bool> shutdown{false};
+    std::atomic<bool> shutdown_signal{false};
 
-    TestRouterSenderWorker worker(zmq_ctx, cfg, queue, shutdown);
+    TestRouterSenderWorker worker(zmq_ctx, cfg, queue, shutdown_signal);
 
     void* dealer_socket = zmq_socket(zmq_ctx, ZMQ_DEALER);
     void* router_socket = zmq_socket(zmq_ctx, ZMQ_ROUTER);
@@ -121,9 +121,9 @@ void Test_SenderLockFreeWorker_send() {
     void* zmq_ctx = zmq_ctx_new();
     Config cfg;
     boost::lockfree::spsc_queue<zmq_msg_t*, boost::lockfree::capacity<100>> queue;
-    std::atomic<bool> shutdown{false};
+    std::atomic<bool> shutdown_signal{false};
 
-    TestSenderWorker worker(zmq_ctx, cfg, queue, shutdown, ZMQ_PUSH);
+    TestSenderWorker worker(zmq_ctx, cfg, queue, shutdown_signal, ZMQ_PUSH);
 
     void* push_socket = zmq_socket(zmq_ctx, ZMQ_PUSH);
     void* pull_socket = zmq_socket(zmq_ctx, ZMQ_PULL);
@@ -155,9 +155,9 @@ void Test_RouterSenderLockFreeWorker_send() {
     void* zmq_ctx = zmq_ctx_new();
     Config cfg;
     boost::lockfree::spsc_queue<zmq_msg_t*, boost::lockfree::capacity<100>> queue;
-    std::atomic<bool> shutdown{false};
+    std::atomic<bool> shutdown_signal{false};
 
-    TestRouterSenderWorker worker(zmq_ctx, cfg, queue, shutdown);
+    TestRouterSenderWorker worker(zmq_ctx, cfg, queue, shutdown_signal);
 
     void* router_socket = zmq_socket(zmq_ctx, ZMQ_ROUTER);
     void* dealer_socket = zmq_socket(zmq_ctx, ZMQ_DEALER);
@@ -206,12 +206,12 @@ void Test_ReceiverLockFreeWorker_run_timeout() {
     cfg.timeout = 50;
 
     boost::lockfree::spsc_queue<zmq_msg_t*, boost::lockfree::capacity<100>> queue;
-    std::atomic<bool> shutdown{false};
+    std::atomic<bool> shutdown_signal{false};
 
     void* socket = zmq_socket(zmq_ctx, ZMQ_PUSH);
     assert(zmq_connect(socket, cfg.inurl.c_str()) == 0);
 
-    ReceiverLockFreeWorker receiver(zmq_ctx, cfg, queue, shutdown);
+    ReceiverLockFreeWorker receiver(zmq_ctx, cfg, queue, shutdown_signal);
 
     std::thread thread1([&]() { receiver.run(); });
 
@@ -226,7 +226,7 @@ void Test_ReceiverLockFreeWorker_run_timeout() {
 
     thread1.join();
 
-    assert(shutdown.load() == true); // test shutdown flag too
+    assert(shutdown_signal.load() == true); // test shutdown_signal flag too
 
     zmq_close(socket);
     zmq_ctx_term(zmq_ctx);
@@ -240,7 +240,7 @@ void Test_SenderLockFreeWorker_run_queuedrain() {
     cfg.metrics = false;
 
     boost::lockfree::spsc_queue<zmq_msg_t*, boost::lockfree::capacity<100>> queue;
-    std::atomic<bool> shutdown{false};
+    std::atomic<bool> shutdown_signal{false};
 
     void* socket = zmq_socket(zmq_ctx, ZMQ_PULL);
     assert(zmq_connect(socket, cfg.outurl.c_str()) == 0);
@@ -252,9 +252,9 @@ void Test_SenderLockFreeWorker_run_queuedrain() {
         queue.push(msg);
     }
 
-    shutdown.store(true, std::memory_order_release);
+    shutdown_signal.store(true, std::memory_order_release);
 
-    SenderLockFreeWorker sender(zmq_ctx, cfg, queue, shutdown, ZMQ_PUSH);
+    SenderLockFreeWorker sender(zmq_ctx, cfg, queue, shutdown_signal, ZMQ_PUSH);
     std::thread thread1([&]() { sender.run(); });
 
     char buf[16] = {0};

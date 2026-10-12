@@ -6,11 +6,11 @@
 #include "config.h"
 #include <csignal>
 
-std::atomic<bool> shutdown(false);
+std::atomic<bool> shutdown_signal(false);
 
 void signal_handler(int signum) {
     if (signum == SIGINT) {
-        shutdown.store(true, std::memory_order_relaxed);
+        shutdown_signal.store(true, std::memory_order_relaxed);
     }
 }
 
@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
     }
 
     load_config(fname, cfg);
-    CacheServer serv(cfg, shutdown);
+    CacheServer serv(cfg, shutdown_signal);
     serv.run();
 
     return 0;
