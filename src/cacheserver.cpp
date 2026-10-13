@@ -33,6 +33,7 @@ CacheServer::~CacheServer() {
 }
 
 void CacheServer::run() {
+    // Main thread managing workers and reporting queue depth for lock-free modes.
     workers = create(cfg, zmq_ctx);
     threads.reserve(workers.size());
 
@@ -69,29 +70,37 @@ std::vector<std::unique_ptr<ThreadWorker>> CacheServer::create(Config& cfg, void
                 bindoutgoing = true;
             }
             // receiver worker first! Inproc bind has to happen first
-            workerlist.push_back(std::make_unique<InprocWorker>(zmq_ctx, cfg, false, bindoutgoing));
+            workerlist.push_back(std::make_unique<InprocWorker>(
+                zmq_ctx, cfg, false, bindoutgoing));
             for (ssize_t i=0; i<cfg.helper_threads+1; i++) {
-                workerlist.push_back(std::make_unique<InprocWorker>(zmq_ctx, cfg, true, bindoutgoing));
+                workerlist.push_back(std::make_unique<InprocWorker>(
+                    zmq_ctx, cfg, true, bindoutgoing));
             }
             break;
         }
         case 4: // lock free queue
             // receiver:
-            workerlist.push_back(std::make_unique<ReceiverLockFreeWorker>(zmq_ctx, cfg, queue, shutdown));
+            workerlist.push_back(std::make_unique<ReceiverLockFreeWorker>(
+                zmq_ctx, cfg, queue, shutdown));
             // sender:
-            workerlist.push_back(std::make_unique<SenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown));
+            workerlist.push_back(std::make_unique<SenderLockFreeWorker>(
+                zmq_ctx, cfg, queue, shutdown));
             break;
         case 5: // lock free queue with push-pull in and dealer out
             // receiver:
-            workerlist.push_back(std::make_unique<ReceiverLockFreeWorker>(zmq_ctx, cfg, queue, shutdown));
+            workerlist.push_back(std::make_unique<ReceiverLockFreeWorker>(
+                zmq_ctx, cfg, queue, shutdown));
             // sender:
-            workerlist.push_back(std::make_unique<RouterSenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown));
+            workerlist.push_back(std::make_unique<RouterSenderLockFreeWorker>(
+                zmq_ctx, cfg, queue, shutdown));
             break;
         case 6: //lock free queue with push-pull in and rep out
             // receiver:
-            workerlist.push_back(std::make_unique<ReceiverLockFreeWorker>(zmq_ctx, cfg, queue, shutdown));
+            workerlist.push_back(std::make_unique<ReceiverLockFreeWorker>(
+                zmq_ctx, cfg, queue, shutdown));
             // sender:
-            workerlist.push_back(std::make_unique<ReplySenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown));
+            workerlist.push_back(std::make_unique<ReplySenderLockFreeWorker>(
+                zmq_ctx, cfg, queue, shutdown));
             break;
         case 7:  // test connection
             workerlist.push_back(std::make_unique<ConnectionTesterWorker>(zmq_ctx, cfg));

@@ -11,18 +11,18 @@ using json = nlohmann::json;
 
 struct Config
 {
-    std::string inurl;
-    std::string outurl;
-    std::string workerurl = "inproc://worker";
-    int type;
-    unsigned helper_threads;
-    int io_threads;
-    int hwm;
-    int timeout;
-    bool verbose;
-    bool metrics;
-    uint32_t metrics_interval;
-    uint32_t cache_id;
+    std::string inurl;                            // ZMQ url for incoming messages
+    std::string outurl;                           // ZMQ url for outgoing messages
+    std::string workerurl = "inproc://worker";    // internal url, inproc modes (type 2/3) only
+    int type;                                     // pipeline mode
+    unsigned helper_threads;                      // extra sender threads, inproc modes only
+    int io_threads;                               // zmq background i/o threads in the context
+    int hwm;                                      // zmq msg cap (high water mark)
+    int timeout;                                  // receive timeout in ms, -1 blocks forever
+    bool verbose;                                 // verbose mode to show queue depth once a second
+    bool metrics;                                 // send metrics counters to fastcache api
+    uint32_t metrics_interval;                    // time between metrics publications
+    uint32_t cache_id;                            // makes the metrics ipc path unique per instance
 };
 
 void load_config(const std::string& fname, Config& conf);
