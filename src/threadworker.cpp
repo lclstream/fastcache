@@ -139,7 +139,7 @@ Action ReplySenderLockFreeWorker::receive(void* socket) {
     int rc = zmq_msg_recv(&request, socket, 0);
     if (rc < 0) {
         if (errno == EAGAIN) {
-            if (shutdown.load(std::memory_order_acquire))
+            if (shutdown_signal.load(std::memory_order_acquire))
                 return Action::Break;
             return Action::Continue;
         }
@@ -155,7 +155,7 @@ Action RouterSenderLockFreeWorker::receive(void* socket) {
     int rc = zmq_msg_recv(&id, socket, 0);
     if (rc < 0) {
         if (errno == EAGAIN) {
-            if (shutdown.load(std::memory_order_acquire)) {
+            if (shutdown_signal.load(std::memory_order_acquire)) {
                 return Action::Break;
             }
             return Action::Continue;
@@ -220,10 +220,10 @@ void SenderLockFreeWorker::run() {
 
         zmq_msg_t* msg = nullptr;
         while (!queue.pop(msg)) {
-            if (shutdown.load(std::memory_order_acquire) && queue.read_available() == 0) break;
+            if (shutdown_signal.load(std::memory_order_acquire) && queue.read_available() == 0) break;
             std::this_thread::yield();
         }
-        if (shutdown.load(std::memory_order_acquire) && msg == nullptr) break;
+        if (shutdown_signal.load(std::memory_order_acquire) && msg == nullptr) break;
         int rc = send(socket, msg);
         zmq_msg_close(msg);
         delete msg;
@@ -261,7 +261,7 @@ void ReceiverLockFreeWorker::run() {
             zmq_msg_close(&msg);
             int err = zmq_errno();
             if (err == EAGAIN) {
-                if (shutdown.load(std::memory_order_acquire)) break;
+                if (shutdown_signal.load(std::memory_order_acquire)) break;
                 if (!started_work) continue;
                 if (timeout > 0) {
                     std::cout << "No messages for " << static_cast<double>(timeout)/1000 << " seconds. Exiting." << std::endl;
@@ -269,7 +269,7 @@ void ReceiverLockFreeWorker::run() {
             } else {
                 std::cerr << "Error, " << zmq_strerror(err) << " closing threads." << std::endl;
             }
-            shutdown.store(true, std::memory_order_release);
+            shutdown_signal.store(true, std::memory_order_release);
             break;
         } else if (cfg.metrics) {
             send_metrics(metrics_data, rc, metrics_socket);
@@ -281,7 +281,7 @@ void ReceiverLockFreeWorker::run() {
         while (!queue.push(qmsg)) {
             std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
-        if (shutdown.load(std::memory_order_acquire)) {
+        if (shutdown_signal.load(std::memory_order_acquire)) {
             break;
         }
     }
