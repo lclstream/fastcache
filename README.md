@@ -60,6 +60,7 @@ Outgoing ZMQ URL where the receivers can connect to.
 - `5`: lock-free router forward
 - `6`: lock-free rep forward
 - `7`: simulated data for outgoing connection testing
+- `8`: mode for testing incoming connection speed (no queue)
 
 `helper_threads`: Number of extra worker threads used (not used in default mode)
 
