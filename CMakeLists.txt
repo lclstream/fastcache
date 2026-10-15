@@ -28,12 +28,14 @@ enable_testing()
 
 add_executable(threadworker_test
     tests/test_threadworker.cpp
+    src/threadworker.cpp
 )
 
 target_link_libraries(threadworker_test
     PRIVATE
     libzmq
     nlohmann_json::nlohmann_json
+    Boost::lockfree
 )
 
 add_test(
@@ -43,6 +45,7 @@ add_test(
 
 add_executable(lockfreeworker_test
     tests/test_lockfreeworker.cpp
+    src/threadworker.cpp
 )
 
 target_link_libraries(lockfreeworker_test
