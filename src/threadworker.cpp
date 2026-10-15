@@ -44,7 +44,9 @@ void ProxyWorker::run() {
     void *incoming = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
     void *outgoing = create_socket(zmq_ctx, {ZMQ_PUSH, cfg.hwm, cfg.outurl, true});
 
-    std::cout << "Starting simple forward with 1 thread. TID" << std::this_thread::get_id() << std::endl;
+    std::cout << "Starting simple forward with 1 thread. TID"
+              << std::this_thread::get_id()
+              << std::endl;
 
     int prob = 0;
 
@@ -94,10 +96,12 @@ void* LockFreeWorker::create_metrics_socket(std::string& metrics_path) {
     return create_socket(zmq_ctx, {ZMQ_PUB, hwm, sender_metrics_url, true});
 }
 
-std::string LockFreeWorker::create_metrics(uint64_t rc_count, uint64_t msg_count, uint64_t metrics_count) {
+std::string LockFreeWorker::create_metrics(uint64_t rc_count, uint64_t msg_count,
+                                           uint64_t metrics_count) {
     auto timenow = std::chrono::system_clock::now();
     auto time_since_epoch = timenow.time_since_epoch();
-    uint64_t timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(time_since_epoch).count();
+    uint64_t timestamp =
+                std::chrono::duration_cast<std::chrono::milliseconds>(time_since_epoch).count();
     json metrics_data = {
         {"type", sender ? "Sender" : "Receiver"},
         {"timestamp", timestamp},
@@ -109,10 +113,12 @@ std::string LockFreeWorker::create_metrics(uint64_t rc_count, uint64_t msg_count
 }
 
 void LockFreeWorker::send_metrics(MetricsData& metrics, int rc, void* metrics_socket) {
+    // Updates metrics counters, create metrics data and send them via zmq to metrics socket.
     metrics.rc_count += rc;
     metrics.msg_count++;
     if (metrics.msg_count%cfg.metrics_interval == 0) {
-        std::string buffer = create_metrics(metrics.rc_count, metrics.msg_count, metrics.metrics_count);
+        std::string buffer = create_metrics(metrics.rc_count, metrics.msg_count,
+                                            metrics.metrics_count);
         if (metrics_socket && !buffer.empty()) {
             zmq_send(metrics_socket, buffer.data(), buffer.size(), ZMQ_DONTWAIT);
         }
@@ -122,7 +128,8 @@ void LockFreeWorker::send_metrics(MetricsData& metrics, int rc, void* metrics_so
     }
 }
 
-void LockFreeWorker::cleanup_metrics(std::thread::id tid, void* metrics_socket, std::string& metrics_path) {
+void LockFreeWorker::cleanup_metrics(std::thread::id tid, void* metrics_socket,
+                                     std::string& metrics_path) {
     std::cout << "Closing thread: " << tid << std::endl;
     zmq_close(metrics_socket);
     metrics_socket = nullptr;
@@ -139,7 +146,7 @@ Action ReplySenderLockFreeWorker::receive(void* socket) {
     int rc = zmq_msg_recv(&request, socket, 0);
     if (rc < 0) {
         if (errno == EAGAIN) {
-            if (shutdown.load(std::memory_order_acquire))
+            if (shutdown_signal.load(std::memory_order_acquire))
                 return Action::Break;
             return Action::Continue;
         }
@@ -155,7 +162,7 @@ Action RouterSenderLockFreeWorker::receive(void* socket) {
     int rc = zmq_msg_recv(&id, socket, 0);
     if (rc < 0) {
         if (errno == EAGAIN) {
-            if (shutdown.load(std::memory_order_acquire)) {
+            if (shutdown_signal.load(std::memory_order_acquire)) {
                 return Action::Break;
             }
             return Action::Continue;
@@ -220,10 +227,13 @@ void SenderLockFreeWorker::run() {
 
         zmq_msg_t* msg = nullptr;
         while (!queue.pop(msg)) {
-            if (shutdown.load(std::memory_order_acquire) && queue.read_available() == 0) break;
+            if (shutdown_signal.load(std::memory_order_acquire) && 
+                queue.read_available() == 0) {
+                break;
+            }
             std::this_thread::yield();
         }
-        if (shutdown.load(std::memory_order_acquire) && msg == nullptr) break;
+        if (shutdown_signal.load(std::memory_order_acquire) && msg == nullptr) break;
         int rc = send(socket, msg);
         zmq_msg_close(msg);
         delete msg;
@@ -261,15 +271,18 @@ void ReceiverLockFreeWorker::run() {
             zmq_msg_close(&msg);
             int err = zmq_errno();
             if (err == EAGAIN) {
-                if (shutdown.load(std::memory_order_acquire)) break;
+                if (shutdown_signal.load(std::memory_order_acquire)) break;
                 if (!started_work) continue;
                 if (timeout > 0) {
-                    std::cout << "No messages for " << static_cast<double>(timeout)/1000 << " seconds. Exiting." << std::endl;
+                    std::cout << "No messages for "
+                              << static_cast<double>(timeout)/1000
+                              << " seconds. Exiting."
+                              << std::endl;
                 }
             } else {
                 std::cerr << "Error, " << zmq_strerror(err) << " closing threads." << std::endl;
             }
-            shutdown.store(true, std::memory_order_release);
+            shutdown_signal.store(true, std::memory_order_release);
             break;
         } else if (cfg.metrics) {
             send_metrics(metrics_data, rc, metrics_socket);
@@ -281,7 +294,7 @@ void ReceiverLockFreeWorker::run() {
         while (!queue.push(qmsg)) {
             std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
-        if (shutdown.load(std::memory_order_acquire)) {
+        if (shutdown_signal.load(std::memory_order_acquire)) {
             break;
         }
     }

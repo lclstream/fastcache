@@ -68,14 +68,14 @@ public:
         const Config& cfg,
         MessageQueue& queue,
         bool sender,
-        std::atomic<bool>& shutdown
-    ) : ThreadWorker(ctx, cfg), shutdown(shutdown),
+        std::atomic<bool>& shutdown_signal
+    ) : ThreadWorker(ctx, cfg), shutdown_signal(shutdown_signal),
                                 sender(sender),
                                 queue(queue),
                                 timeout(cfg.timeout) {};
     //void run() override;
 protected:
-    std::atomic<bool>& shutdown;
+    std::atomic<bool>& shutdown_signal;
     bool sender;
     MessageQueue& queue;
     int timeout;
@@ -92,8 +92,8 @@ public:
         void* ctx,
         const Config& cfg,
         MessageQueue& queue,
-        std::atomic<bool>& shutdown
-    ) : LockFreeWorker(ctx, cfg, queue, false, shutdown) {};
+        std::atomic<bool>& shutdown_signal
+    ) : LockFreeWorker(ctx, cfg, queue, false, shutdown_signal) {};
     void run() override;
 };
 
@@ -103,9 +103,9 @@ public:
         void* ctx,
         const Config& cfg,
         MessageQueue& queue,
-        std::atomic<bool>& shutdown,
+        std::atomic<bool>& shutdown_signal,
         int socket_type = ZMQ_PUSH
-    ) : LockFreeWorker(ctx, cfg, queue, true, shutdown), socket_type(socket_type) {};
+    ) : LockFreeWorker(ctx, cfg, queue, true, shutdown_signal), socket_type(socket_type) {};
     void run() override;
     virtual Action receive(void* socket);
     virtual int send(void* socket, zmq_msg_t* msg);
@@ -119,8 +119,8 @@ public:
         void* ctx,
         const Config& cfg,
         MessageQueue& queue,
-        std::atomic<bool>& shutdown
-    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown, ZMQ_ROUTER) {};
+        std::atomic<bool>& shutdown_signal
+    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown_signal, ZMQ_ROUTER) {};
     ~RouterSenderLockFreeWorker() {
         zmq_msg_close(&id);
     }
@@ -136,8 +136,8 @@ public:
         void* ctx,
         const Config& cfg,
         MessageQueue& queue,
-        std::atomic<bool>& shutdown
-    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown, ZMQ_REP) {};
+        std::atomic<bool>& shutdown_signal
+    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown_signal, ZMQ_REP) {};
     Action receive(void* socket) override;
 };
 
