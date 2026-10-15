@@ -7,7 +7,7 @@
 void* ThreadWorker::create_socket(void* ctx, const SocketConfig& socketcfg) {
     void* socket = zmq_socket(ctx, socketcfg.type);
 
-    zmq_setsockopt(socket, socketcfg.type == ZMQ_PULL ? ZMQ_RCVHWM:ZMQ_SNDHWM, 
+    zmq_setsockopt(socket, socketcfg.type == ZMQ_PULL ? ZMQ_RCVHWM:ZMQ_SNDHWM,
                    &socketcfg.hwm, sizeof(socketcfg.hwm));
 
     if (socketcfg.isbind) {
@@ -277,7 +277,7 @@ void ReceiverLockFreeWorker::run() {
         started_work = true;
         zmq_msg_t* qmsg = new zmq_msg_t();
         zmq_msg_init(qmsg);
-        zmq_msg_move(qmsg, &msg); 
+        zmq_msg_move(qmsg, &msg);
         while (!queue.push(qmsg)) {
             std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
@@ -292,29 +292,27 @@ void ReceiverLockFreeWorker::run() {
     }
 }
 
-void ConnectionTesterWorker::run() {
-
-    //void* socket = create_socket(zmq_ctx, {testincoming ? ZMQ_PULL:ZMQ_PUSH,
-    //        cfg.hwm, testincoming ? cfg.inurl:cfg.outurl, true});
-
-    void* socket = create_socket(zmq_ctx, {ZMQ_PUSH, cfg.hwm, cfg.outurl, true});
-
-    const size_t size = 30ULL * 1024 * 1024;
-    std::vector<uint8_t> buffer(size);
-    for (size_t i=0; i<size; i++) {
-        buffer[i] = static_cast<uint8_t>(i);
-    }
+void QueueGeneratorLockFreeWorker::run() {
+    auto tid = std::this_thread::get_id();
+    std::cout << "Starting Data Generator Worker.. TID: " << tid << std::endl;
+    size_t datasize = cfg.dataMB * 512 * 1024;
+    size_t datasize_byte = datasize * sizeof(uint16_t);
+    std::vector<uint16_t> data(datasize, 1);
 
     while (1) {
-        zmq_msg_t msg;
-        zmq_msg_init_data(
-            &msg,
-            buffer.data(),
-            buffer.size(),
-            nullptr,
-            nullptr
-        );
-        zmq_msg_send(&msg, socket, 0);
-        zmq_msg_close(&msg);
+        if (shutdown.load(std::memory_order_acquire)) break;
+        auto* qmsg = new zmq_msg_t();
+        zmq_msg_init_size(qmsg, datasize_byte);
+        memcpy(zmq_msg_data(qmsg), data.data(), datasize_byte);
+
+        while (!queue.push(qmsg)) {
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
+            if (shutdown.load(std::memory_order_acquire)) {
+                zmq_msg_close(qmsg);
+                delete qmsg;
+                return;
+            }
+        }
+        //std::this_thread::sleep_for(std::chrono::microseconds(50));
     }
 }

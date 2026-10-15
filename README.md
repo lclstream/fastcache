@@ -10,12 +10,22 @@ Multi threaded cache that runs on the data transfer nodes to stream data to exte
 
 ## Build
 
+### Build with vcpkg
+
 ```sh
 
 cmake  --preset  default
 
 cmake  --build  --preset  default
 
+```
+
+### Build with conda (on s3df) 
+
+```sh
+source setup_env.sh
+
+make
 ```
 
 ## Run
@@ -49,7 +59,7 @@ Outgoing ZMQ URL where the receivers can connect to.
 - `4`: lock-free queue forward with two threads, this is the **default** mode.
 - `5`: lock-free router forward
 - `6`: lock-free rep forward
-- `7`: connection test for sender
+- `7`: simulated data for outgoing connection testing
 
 `helper_threads`: Number of extra worker threads used (not used in default mode)
 
@@ -66,3 +76,7 @@ Outgoing ZMQ URL where the receivers can connect to.
 `metrics_interval`: Number of messages before metrics are sent to the ipc socket.
 
 `cache_id`: Unique identifier for the ipc metrics url
+
+`dataMB`: Size of simulated data
+
+`dataSimulatorThreads`: Number of workers that simulate data

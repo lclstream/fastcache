@@ -23,6 +23,8 @@ struct Config
     bool metrics;
     uint32_t metrics_interval;
     uint32_t cache_id;
+    uint16_t dataMB;
+    uint16_t dataSimulatorThreads;
 };
 
 void load_config(const std::string& fname, Config& conf);
