@@ -7,6 +7,8 @@
   "verbose": true,
   "metrics": false,
   "metrics_interval": 5000,
-  "cache_id": 5,
-  "type": 6
+  "cache_id": 1,
+  "type": 7,
+  "dataMB": 32,
+  "dataSimulatorThreads": 1
 }

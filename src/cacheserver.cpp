@@ -94,7 +94,7 @@ std::vector<std::unique_ptr<ThreadWorker>> CacheServer::create(Config& cfg, void
             workerlist.push_back(std::make_unique<RouterSenderLockFreeWorker>(
                 zmq_ctx, cfg, queue, shutdown_signal));
             break;
-        case 6: //lock free queue with push-pull in and rep out
+        case 6: // lock free queue with push-pull in and rep out
             // receiver:
             workerlist.push_back(std::make_unique<ReceiverLockFreeWorker>(
                 zmq_ctx, cfg, queue, shutdown_signal));
@@ -102,8 +102,13 @@ std::vector<std::unique_ptr<ThreadWorker>> CacheServer::create(Config& cfg, void
             workerlist.push_back(std::make_unique<ReplySenderLockFreeWorker>(
                 zmq_ctx, cfg, queue, shutdown_signal));
             break;
-        case 7:  // test connection
-            workerlist.push_back(std::make_unique<ConnectionTesterWorker>(zmq_ctx, cfg));
+        case 7:  // lock free queue sender with Simulated data
+            // receiver:
+            for (int i=0; i<cfg.dataSimulatorThreads; ++i) {
+                workerlist.push_back(std::make_unique<QueueGeneratorLockFreeWorker>(zmq_ctx, cfg, queue, shutdown));
+            }
+            // sender:
+                workerlist.push_back(std::make_unique<SenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown));
             break;
         default:
             break;

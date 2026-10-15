@@ -23,6 +23,8 @@ struct Config
     bool metrics;                                 // send metrics counters to fastcache api
     uint32_t metrics_interval;                    // time between metrics publications
     uint32_t cache_id;                            // makes the metrics ipc path unique per instance
+    uint16_t dataMB;
+    uint16_t dataSimulatorThreads;
 };
 
 void load_config(const std::string& fname, Config& conf);
