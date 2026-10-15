@@ -43,8 +43,10 @@ void CacheServer::run() {
             workerptr->run();
         });
     }
-    while (!shutdown_signal.load(std::memory_order_acquire)) {
-        if (cfg.verbose && (cfg.type == 4 || cfg.type == 5 || cfg.type == 6)) {
+    while (!shutdown.load(std::memory_order_acquire)) {
+        // Set queue types here
+        bool useQueue = (cfg.type >= 4 && cfg.type <= 7);
+        if (cfg.verbose && useQueue) {
             int num = queue.read_available();
             if (num > 1) {
                 std::cout << "Elements in queue: " << num << std::endl;
@@ -110,6 +112,8 @@ std::vector<std::unique_ptr<ThreadWorker>> CacheServer::create(Config& cfg, void
             // sender:
                 workerlist.push_back(std::make_unique<SenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown));
             break;
+        case 8:  // incoming data speed test
+                workerlist.push_back(std::make_unique<SinkLockFreeWorker>(zmq_ctx, cfg, queue, shutdown));
         default:
             break;
     }

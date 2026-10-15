@@ -152,4 +152,15 @@ public:
     void run() override;
 };
 
+class SinkLockFreeWorker : public LockFreeWorker {
+public:
+    SinkLockFreeWorker(
+        void* ctx,
+        const Config& cfg,
+        MessageQueue& queue,
+        std::atomic<bool>& shutdown
+    ) : LockFreeWorker(ctx, cfg, queue, true, shutdown) {};
+    void run() override;
+};
+
 #endif
