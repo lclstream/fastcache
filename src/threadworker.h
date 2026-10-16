@@ -164,6 +164,7 @@ public:
     ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown_signal, -1),
         segmenter_flags([&cfg] {
             e2sar::Segmenter::SegmenterFlags flags;
+            flags.dpV6 = cfg.ejfat_useIPv6;
             flags.useCP = cfg.ejfat_useLB;
             flags.mtu = cfg.ejfat_mtu;
             flags.sndSocketBufSize = cfg.ejfat_sndbufsize;

@@ -19,7 +19,7 @@ EJFAT_INC := $(EJFAT_PREFIX)/include
 RECEIVER_INC := $(EJFAT_PREFIX)/builddir/src
 
 CXX := g++
-CXXFLAGS := -std=c++20 -Wall -Wextra -Wl,-rpath -g -O3 -MMD -MP -I$(GRPC_INC) -I$(EJFAT_INC) -I$(CONDA_INC) -I$(RECEIVER_INC)
+CXXFLAGS := -std=c++20 -Wall -Wextra -g -O3 -MMD -MP -I$(GRPC_INC) -I$(EJFAT_INC) -I$(CONDA_INC) -I$(RECEIVER_INC)
 
 HAS_LIBURING := $(shell PKG_CONFIG_PATH=$(CONDA_PREFIX)/lib/pkgconfig:$$PKG_CONFIG_PATH pkg-config --exists liburing && echo yes)
 
@@ -28,7 +28,14 @@ ifeq ($(HAS_LIBURING),yes)
 	CXXFLAGS += -DLIBURING_AVAILABLE
 endif
 
-LDFLAGS := -L$(GRPC_LIBS) -L$(GRPC_LIBS2) -L$(CONDA_LIBS) -L$(EJFAT_PREFIX)/lib -L$(EJFAT_LIBS)
+# grpc/protobuf were built with RPATH=$ORIGIN and a bunch of the deps were put in lib64.
+# Because of this we need the following otherwise we get undefined refs
+, := ,
+LIB_DIRS := $(GRPC_LIBS) $(GRPC_LIBS2) $(CONDA_LIBS) $(EJFAT_PREFIX)/lib $(EJFAT_LIBS)
+LDFLAGS := $(addprefix -L,$(LIB_DIRS)) \
+           $(addprefix -Wl$(,)-rpath-link$(,),$(LIB_DIRS)) \
+           $(addprefix -Wl$(,)-rpath$(,),$(LIB_DIRS))
+
 LDLIBS := -lzmq -pthread -le2sar -lgrpc -lgpr -lprotobuf -lgrpc++ -laddress_sorting -labsl_synchronization -lboost_thread -lboost_chrono -lboost_system -lboost_log -lboost_log_setup -lboost_url -luring
 
 SRC_DIR := src
@@ -47,7 +54,7 @@ RECEIVER := receiver
 
 FCOBJS := $(filter-out $(BUILD_DIR)/fastcache.o, $(OBJS))
 
-all: $(TARGET) $(RECEIVER)
+all: $(TARGET)
 
 test: $(TEST_TARGETS)
 	@for test in $(TEST_TARGETS); do \
