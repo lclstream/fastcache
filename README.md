@@ -10,12 +10,22 @@ Multi threaded cache that runs on the data transfer nodes to stream data to exte
 
 ## Build
 
+### Build with vcpkg
+
 ```sh
 
 cmake  --preset  default
 
 cmake  --build  --preset  default
 
+```
+
+### Build with conda (on s3df) 
+
+```sh
+source setup_env.sh
+
+make
 ```
 
 ## Run
@@ -36,33 +46,38 @@ This section describes the meaning of each field in the provided configuration.
 
 Incoming ZeroMQ URL where the process receives messages to. Typically a tcp:// address with the node's IP where the fastcache is running.
 
-`outurl`: Example:  ```tcp://134.79.23.43:5556```
+`outurl`: (optional, default: `""`) Example:  ```tcp://134.79.23.43:5556```
 
 Outgoing ZMQ URL where the receivers can connect to.
 
-`type`:   Application mode type. Controls **runtime pipeline behavior**
+`type`: (optional, default: `LockFreePush`)   Application mode type. Controls **runtime pipeline behavior**
 
-- `0`: Simple forward
-- `1`: zmq_proxy forward
-- `2`: bind inproc forward
-- `3`: bind connect forward
-- `4`: lock-free queue forward with two threads, this is the **default** mode.
-- `5`: lock-free router forward
-- `6`: lock-free rep forward
-- `7`: connection test for sender
+- `Simple`: Simple forward
+- `Proxy`: zmq_proxy forward
+- `BindInproc`: bind inproc forward
+- `ConnectInproc`: bind connect forward
+- `LockFreePush`: lock-free queue forward with two threads, this is the **default** mode.
+- `LockFreeDealer`: lock-free router forward
+- `LockFreeReply`: lock-free rep forward
+- `TestOut`: simulated data for outgoing connection testing
+- `TestIn`: mode for testing incoming connection speed (no queue)
 
-`helper_threads`: Number of extra worker threads used (not used in default mode)
+`helper_threads`: (optional, default: `0`) Number of extra worker threads used (not used in default mode)
 
-`io_threads`: Number of ZMQ bakcground i/o threads in the main context.
-  
-`hwm`: High water mark, limits queued messages.
+`io_threads`: (optional, default: `16`) Number of ZMQ bakcground i/o threads in the main context.
 
-`timeout`: Set in milliseconds. To block forever set to -1. Only counted once the receiver thread started working.
+`hwm`: (optional, default: `10`) High water mark, limits queued messages.
 
-`verbose`: Enables logging of queue size.
+`timeout`: (optional, default: `-1`) Set in milliseconds. To block forever set to -1. Only counted once the receiver thread started working.
 
-`metrics`: Enables metrics to be sent via an ipc socket. Available only for type 4. IPC socket address is "ipc:///tmp/fastcache-metrics-receiver(/sender)-12345" (number is the cache id)
+`verbose`: (optional, default: `false`) Enables logging of queue size.
 
-`metrics_interval`: Number of messages before metrics are sent to the ipc socket.
+`metrics`: (optional, default: `false`) Enables metrics to be sent via an ipc socket. Available only for type 4. IPC socket address is "ipc:///tmp/fastcache-metrics-receiver(/sender)-12345" (number is the cache id)
 
-`cache_id`: Unique identifier for the ipc metrics url
+`metrics_interval`: (optional, default: `10000`) Number of messages before metrics are sent to the ipc socket.
+
+`cache_id`: (optional, default: `1`) Unique identifier for the ipc metrics url
+
+`simdata_size_mb`: (optional, default: `32`) Size of simulated data in MB (mode `TestOut` only)
+
+`datasim_threads`: (optional, default: `1`) Number of workers that simulate data (mode `TestOut` only)
