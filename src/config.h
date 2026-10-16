@@ -25,6 +25,7 @@ struct Config
     uint32_t metrics_cache_id;                    // makes the metrics ipc path unique per instance
 
     bool ejfat_useLB = true;                      // Use load balancer
+    bool ejfat_useIPv6 = false;                   // Use IPv6
     uint16_t ejfat_mtu;                           // interface mtu
     int ejfat_sndbufsize;                         // send buffer size (kernel doubles it, so don't set max)
     float ejfat_rateGbps;                         // speed limit (can cause small bursts)

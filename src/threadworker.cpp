@@ -244,7 +244,7 @@ void SenderLockFreeWorker::run() {
     std::cout << "Starting Lockfree forward. Sender TID: " << tid << std::endl;
     if (socket_type > 0) {
         socket = create_socket(zmq_ctx, {socket_type, cfg.hwm, cfg.outurl, true});
-        zmq_setsockopt(socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
+        zmq_setsockopt(socket, ZMQ_SNDTIMEO, &timeout, sizeof(timeout));
     }
     if (cfg.metrics) {
         metrics_socket = create_metrics_socket(metrics_path);

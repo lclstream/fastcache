@@ -31,6 +31,7 @@ void load_config(const std::string& fname, Config& cfg) {
     cfg.metrics_cache_id = metrics_opts.value("cache_id", 1);
     cfg.metrics_interval = metrics_opts.value("metrics_interval", 10000);
 
+    cfg.ejfat_useIPv6 = ejfat_opts.value("ejfat_useIPv6", false);
     cfg.ejfat_useLB = ejfat_opts.value("ejfat_useLB", true);
     cfg.ejfat_mtu = ejfat_opts.value("mtu", 9000);
     // setsockopt doubles the buffer size (this is assuming wmem_max is 2GB)

@@ -17,6 +17,7 @@
     "metrics_interval": 5000
   },
   "ejfat": {
+    "useIPv6": false,
     "useLB": true,
     "mtu": 9000,
     "sndbufsize": 2147483647,
