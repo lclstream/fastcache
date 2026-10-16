@@ -102,7 +102,7 @@ std::string LockFreeWorker::create_metrics(uint64_t rc_count, uint64_t msg_count
     auto time_since_epoch = timenow.time_since_epoch();
     uint64_t timestamp =
                 std::chrono::duration_cast<std::chrono::milliseconds>(time_since_epoch).count();
-    json metrics_data = {
+    nlohmann::json metrics_data = {
         {"type", sender ? "Sender" : "Receiver"},
         {"timestamp", timestamp},
         {"rc_count", rc_count},
@@ -312,19 +312,19 @@ static void free_data(void* /*data*/, void* dataowner) {
 void QueueGeneratorLockFreeWorker::run() {
     auto tid = std::this_thread::get_id();
     std::cout << "Starting Data Generator Worker.. TID: " << tid << std::endl;
-    size_t datasize = cfg.dataMB * 512 * 1024;
+    size_t datasize = cfg.simdata_size_mb * 512 * 1024;
     size_t datasize_byte = datasize * sizeof(uint16_t);
     auto data = std::make_shared<std::vector<uint16_t>>(datasize, 1);
 
     while (1) {
-        if (shutdown.load(std::memory_order_acquire)) break;
+        if (shutdown_signal.load(std::memory_order_acquire)) break;
         auto* qmsg = new zmq_msg_t();
         auto* dataowner = new std::shared_ptr<std::vector<uint16_t>>(data);
         zmq_msg_init_data(qmsg, data->data(), datasize_byte, free_data, dataowner);
 
         while (!queue.push(qmsg)) {
             std::this_thread::sleep_for(std::chrono::microseconds(50));
-            if (shutdown.load(std::memory_order_acquire)) {
+            if (shutdown_signal.load(std::memory_order_acquire)) {
                 zmq_msg_close(qmsg);
                 delete qmsg;
                 return;
@@ -355,7 +355,7 @@ void SinkLockFreeWorker::run() {
             zmq_msg_close(&msg);
             int err = zmq_errno();
             if (err == EAGAIN) {
-                if (shutdown.load(std::memory_order_acquire)) break;
+                if (shutdown_signal.load(std::memory_order_acquire)) break;
                 if (!started_work) continue;
                 if (timeout > 0) {
                     std::cout << "No messages for " << static_cast<double>(timeout)/1000 << " seconds. Exiting." << std::endl;
@@ -363,7 +363,7 @@ void SinkLockFreeWorker::run() {
             } else {
                 std::cerr << "Error " << zmq_strerror(err) << " closing threads." << std::endl;
             }
-            shutdown.store(true, std::memory_order_release);
+            shutdown_signal.store(true, std::memory_order_release);
             break;
         }
 
@@ -381,7 +381,7 @@ void SinkLockFreeWorker::run() {
         }
 
         zmq_msg_close(&msg);
-        if (shutdown.load(std::memory_order_acquire)) {
+        if (shutdown_signal.load(std::memory_order_acquire)) {
             break;
         }
     }
