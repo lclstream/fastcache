@@ -53,8 +53,10 @@ void Test_ReplySenderLockFreeWorker_receive1() {
 
     void* req_socket = zmq_socket(zmq_ctx, ZMQ_REQ);
     void* rep_socket = zmq_socket(zmq_ctx, ZMQ_REP);
-    assert(zmq_bind(rep_socket, "inproc://reply_test") == 0);
-    assert(zmq_connect(req_socket, "inproc://reply_test") == 0);
+    int res = zmq_bind(rep_socket, "inproc://reply_test");
+    assert(res == 0);
+    int res2 = zmq_connect(req_socket, "inproc://reply_test");
+    assert(res2 == 0);
 
     const char* req_str = "Test123";
     zmq_send(req_socket, req_str, strlen(req_str), 0);
@@ -78,7 +80,8 @@ void Test_ReplySenderLockFreeWorker_receive2() {
     void* rep_socket = zmq_socket(zmq_ctx, ZMQ_REP);
     int timeout = 10;
     zmq_setsockopt(rep_socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
-    assert(zmq_bind(rep_socket, "inproc://reply_test") == 0);
+    int res = zmq_bind(rep_socket, "inproc://reply_test");
+    assert(res == 0);
 
     // 1. without shutdown_signal -> Action::Continue
     Action act = worker.receive(rep_socket);
@@ -103,8 +106,10 @@ void Test_RouterSenderLockFreeWorker_receive() {
 
     void* dealer_socket = zmq_socket(zmq_ctx, ZMQ_DEALER);
     void* router_socket = zmq_socket(zmq_ctx, ZMQ_ROUTER);
-    assert(zmq_bind(router_socket, "inproc://router_test") == 0);
-    assert(zmq_connect(dealer_socket, "inproc://router_test") == 0);
+    int res = zmq_bind(router_socket, "inproc://router_test");
+    assert(res == 0);
+    int res2 = zmq_connect(dealer_socket, "inproc://router_test");
+    assert(res2 == 0);
 
     zmq_send(dealer_socket, "", 0, ZMQ_SNDMORE);
     zmq_send(dealer_socket, "Test123", 7, 0);
@@ -127,8 +132,10 @@ void Test_SenderLockFreeWorker_send() {
 
     void* push_socket = zmq_socket(zmq_ctx, ZMQ_PUSH);
     void* pull_socket = zmq_socket(zmq_ctx, ZMQ_PULL);
-    assert(zmq_bind(push_socket, "inproc://sender_test") == 0);
-    assert(zmq_connect(pull_socket, "inproc://sender_test") == 0);
+    int res = zmq_bind(push_socket, "inproc://sender_test");
+    assert(res == 0);
+    int res2 = zmq_connect(pull_socket, "inproc://sender_test");
+    assert(res2 == 0);
 
     const char* data = "Test123";
     int size = 7;
@@ -143,7 +150,8 @@ void Test_SenderLockFreeWorker_send() {
     char buf[16] = {0};
     int recv_bytes = zmq_recv(pull_socket, buf, sizeof(buf), 0);
     assert(recv_bytes == size);
-    assert(memcmp(buf, data, size) == 0);
+    int res3 = memcmp(buf, data, size);
+    assert(res3 == 0);
 
     zmq_msg_close(&msg);
     zmq_close(push_socket);
@@ -161,8 +169,10 @@ void Test_RouterSenderLockFreeWorker_send() {
 
     void* router_socket = zmq_socket(zmq_ctx, ZMQ_ROUTER);
     void* dealer_socket = zmq_socket(zmq_ctx, ZMQ_DEALER);
-    assert(zmq_bind(router_socket, "inproc://router_test") == 0);
-    assert(zmq_connect(dealer_socket, "inproc://router_test") == 0);
+    int res = zmq_bind(router_socket, "inproc://router_test");
+    assert(res == 0);
+    int res2 = zmq_connect(dealer_socket, "inproc://router_test");
+    assert(res2 == 0);
 
     const char* data = "Test123";
     int size = 7;
@@ -189,7 +199,8 @@ void Test_RouterSenderLockFreeWorker_send() {
     assert(more == 1);
 
     zmq_recv(dealer_socket, data_buf, sizeof(data_buf), 0);
-    assert(memcmp(data_buf, data, size) == 0);
+    int res3 = memcmp(data_buf, data, size);
+    assert(res3 == 0);
 
     zmq_msg_close(&reply_msg);
     zmq_close(router_socket);
@@ -209,7 +220,8 @@ void Test_ReceiverLockFreeWorker_run_timeout() {
     std::atomic<bool> shutdown_signal{false};
 
     void* socket = zmq_socket(zmq_ctx, ZMQ_PUSH);
-    assert(zmq_connect(socket, cfg.inurl.c_str()) == 0);
+    int res = zmq_connect(socket, cfg.inurl.c_str());
+    assert(res == 0);
 
     ReceiverLockFreeWorker receiver(zmq_ctx, cfg, queue, shutdown_signal);
 
@@ -226,7 +238,8 @@ void Test_ReceiverLockFreeWorker_run_timeout() {
 
     thread1.join();
 
-    assert(shutdown_signal.load() == true); // test shutdown_signal flag too
+    bool shutdown_sig_load = shutdown_signal.load();
+    assert(shutdown_sig_load == true); // test shutdown_signal flag too
 
     zmq_close(socket);
     zmq_ctx_term(zmq_ctx);
@@ -243,7 +256,8 @@ void Test_SenderLockFreeWorker_run_queuedrain() {
     std::atomic<bool> shutdown_signal{false};
 
     void* socket = zmq_socket(zmq_ctx, ZMQ_PULL);
-    assert(zmq_connect(socket, cfg.outurl.c_str()) == 0);
+    int res = zmq_connect(socket, cfg.outurl.c_str());
+    assert(res == 0);
 
     for (int i = 0; i < 100; ++i) {
         zmq_msg_t* msg = new zmq_msg_t();
