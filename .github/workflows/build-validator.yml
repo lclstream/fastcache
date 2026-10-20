@@ -30,7 +30,7 @@ jobs:
             curl zip unzip tar git ca-certificates
 
       - name: Cache vcpkg binary packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/vcpkg
           key: vcpkg-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
@@ -67,7 +67,7 @@ jobs:
             curl zip unzip tar git ca-certificates
 
       - name: Cache vcpkg binary packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/vcpkg
           key: vcpkg-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
