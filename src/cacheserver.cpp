@@ -43,7 +43,7 @@ void CacheServer::run() {
             workerptr->run();
         });
     }
-    while (!shutdown.load(std::memory_order_acquire)) {
+    while (!shutdown_signal.load(std::memory_order_acquire)) {
         // Set queue types here
         bool usesQueue = (cfg.type == RunType::LockFreePush ||
                          cfg.type == RunType::LockFreeDealer ||

@@ -147,8 +147,8 @@ public:
         void* ctx,
         const Config& cfg,
         MessageQueue& queue,
-        std::atomic<bool>& shutdown
-    ) : LockFreeWorker(ctx, cfg, queue, false, shutdown) {};
+        std::atomic<bool>& shutdown_signal
+    ) : LockFreeWorker(ctx, cfg, queue, false, shutdown_signal) {};
     void run() override;
 };
 
@@ -158,8 +158,8 @@ public:
         void* ctx,
         const Config& cfg,
         MessageQueue& queue,
-        std::atomic<bool>& shutdown
-    ) : LockFreeWorker(ctx, cfg, queue, true, shutdown) {};
+        std::atomic<bool>& shutdown_signal
+    ) : LockFreeWorker(ctx, cfg, queue, true, shutdown_signal) {};
     void run() override;
 };
 
