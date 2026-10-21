@@ -122,7 +122,7 @@ public:
         std::atomic<bool>& shutdown_signal
     ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown_signal, ZMQ_ROUTER) {};
     ~RouterSenderLockFreeWorker() {
-        zmq_msg_close(&id); 
+        zmq_msg_close(&id);
     }
     Action receive(void* socket) override;
     int send(void* socket, zmq_msg_t* msg) override;
@@ -141,10 +141,25 @@ public:
     Action receive(void* socket) override;
 };
 
-class ConnectionTesterWorker : public ThreadWorker {
+class QueueGeneratorLockFreeWorker : public LockFreeWorker {
 public:
-    ConnectionTesterWorker(void* ctx, const Config& cfg)
-        : ThreadWorker(ctx, cfg) {};
+    QueueGeneratorLockFreeWorker(
+        void* ctx,
+        const Config& cfg,
+        MessageQueue& queue,
+        std::atomic<bool>& shutdown_signal
+    ) : LockFreeWorker(ctx, cfg, queue, false, shutdown_signal) {};
+    void run() override;
+};
+
+class SinkLockFreeWorker : public LockFreeWorker {
+public:
+    SinkLockFreeWorker(
+        void* ctx,
+        const Config& cfg,
+        MessageQueue& queue,
+        std::atomic<bool>& shutdown_signal
+    ) : LockFreeWorker(ctx, cfg, queue, true, shutdown_signal) {};
     void run() override;
 };
 

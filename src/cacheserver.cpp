@@ -11,7 +11,7 @@ CacheServer::CacheServer(Config &config, std::atomic<bool>& shutdown_signal)
     std::cout << "Using " << cfg.io_threads << " zmq io threads." << std::endl;
     std::cout << "Trying to use " << cfg.helper_threads << " helper_threads." << std::endl;
     std::cout << "IN URL: " << cfg.inurl << " OUT URL: " << cfg.outurl << std::endl;
-    std::cout << "Type: " << cfg.type << "." << std::endl;
+    std::cout << "Type: " << static_cast<int>(cfg.type) << "." << std::endl;
     if (cfg.timeout > 0) {
         std::cout << "Timeout: " << cfg.timeout << " ms." << std::endl;
     }
@@ -44,7 +44,12 @@ void CacheServer::run() {
         });
     }
     while (!shutdown_signal.load(std::memory_order_acquire)) {
-        if (cfg.verbose && (cfg.type == 4 || cfg.type == 5 || cfg.type == 6)) {
+        // Set queue types here
+        bool usesQueue = (cfg.type == RunType::LockFreePush ||
+                         cfg.type == RunType::LockFreeDealer ||
+                         cfg.type == RunType::LockFreeReply ||
+                         cfg.type == RunType::TestOut);
+        if (cfg.verbose && usesQueue) {
             int num = queue.read_available();
             if (num > 1) {
                 std::cout << "Elements in queue: " << num << std::endl;
@@ -57,15 +62,16 @@ void CacheServer::run() {
 std::vector<std::unique_ptr<ThreadWorker>> CacheServer::create(Config& cfg, void* zmq_ctx) {
     std::vector<std::unique_ptr<ThreadWorker>> workerlist;
     switch (cfg.type) {
-        case 0: // simple
-        case 1: // proxy
+        case RunType::Simple:
+        case RunType::Proxy:
             // 1 thread that is doing IN and OUT with proxy or simple
-            workerlist.push_back(std::make_unique<ProxyWorker>(zmq_ctx, cfg, cfg.type));
+            workerlist.push_back(std::make_unique<ProxyWorker>(
+                zmq_ctx, cfg, static_cast<int>(cfg.type)));
             break;
-        case 2: // bind inproc
-        case 3: {// connect inproc
+        case RunType::BindInproc:
+        case RunType::ConnectInproc: {
             bool bindoutgoing = false;
-            if (cfg.type == 2) {
+            if (static_cast<int>(cfg.type) == 2) {
                 cfg.helper_threads = 0; // Just to be sure (w bind out no extra workers)
                 bindoutgoing = true;
             }
@@ -78,7 +84,7 @@ std::vector<std::unique_ptr<ThreadWorker>> CacheServer::create(Config& cfg, void
             }
             break;
         }
-        case 4: // lock free queue
+        case RunType::LockFreePush:
             // receiver:
             workerlist.push_back(std::make_unique<ReceiverLockFreeWorker>(
                 zmq_ctx, cfg, queue, shutdown_signal));
@@ -86,7 +92,7 @@ std::vector<std::unique_ptr<ThreadWorker>> CacheServer::create(Config& cfg, void
             workerlist.push_back(std::make_unique<SenderLockFreeWorker>(
                 zmq_ctx, cfg, queue, shutdown_signal));
             break;
-        case 5: // lock free queue with push-pull in and dealer out
+        case RunType::LockFreeDealer:
             // receiver:
             workerlist.push_back(std::make_unique<ReceiverLockFreeWorker>(
                 zmq_ctx, cfg, queue, shutdown_signal));
@@ -94,7 +100,7 @@ std::vector<std::unique_ptr<ThreadWorker>> CacheServer::create(Config& cfg, void
             workerlist.push_back(std::make_unique<RouterSenderLockFreeWorker>(
                 zmq_ctx, cfg, queue, shutdown_signal));
             break;
-        case 6: //lock free queue with push-pull in and rep out
+        case RunType::LockFreeReply:
             // receiver:
             workerlist.push_back(std::make_unique<ReceiverLockFreeWorker>(
                 zmq_ctx, cfg, queue, shutdown_signal));
@@ -102,9 +108,19 @@ std::vector<std::unique_ptr<ThreadWorker>> CacheServer::create(Config& cfg, void
             workerlist.push_back(std::make_unique<ReplySenderLockFreeWorker>(
                 zmq_ctx, cfg, queue, shutdown_signal));
             break;
-        case 7:  // test connection
-            workerlist.push_back(std::make_unique<ConnectionTesterWorker>(zmq_ctx, cfg));
+        case RunType::TestOut:
+            // receiver:
+            for (int i=0; i<cfg.datasim_threads; ++i) {
+                workerlist.push_back(std::make_unique<QueueGeneratorLockFreeWorker>(
+                    zmq_ctx, cfg, queue, shutdown_signal));
+            }
+            // sender:
+            workerlist.push_back(std::make_unique<SenderLockFreeWorker>(
+                zmq_ctx, cfg, queue, shutdown_signal));
             break;
+        case RunType::TestIn:
+            workerlist.push_back(std::make_unique<SinkLockFreeWorker>(
+                zmq_ctx, cfg, queue, shutdown_signal));
         default:
             break;
     }
