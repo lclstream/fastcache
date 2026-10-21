@@ -98,9 +98,11 @@ Outgoing ZMQ URL where the receivers can connect to.
 
 `ejfat_use_LB`: Use load balancer (LB) with EJFat output.
 
+`ejfat_useIPv6`: Use IPv6 and not IPv4.
+
 `mtu`: MTU size, 9000 default.
 
-`sndbufsize`: Send buffer size for the socket (recommended to use wmem_max)
+`ejfat_socketbufsize`: Send/Receive buffer size for the socket (recommended to use wmem_max).
 
 `rateGbps`: Limit the send rate in Gbit/s.
 
@@ -108,6 +110,16 @@ Outgoing ZMQ URL where the receivers can connect to.
 
 `dataId`: EJFat data source ID number. Use different with multiple senders.
 
-`dataSimulatorThreads`: Number of data simulator worker threads launched.
+`ejfat_reportstats`: Report receiver stats back to LB .
+
+<!-- `dataSimulatorThreads`: Number of data simulator worker threads launched. -->
 
 `queueSize`: EJFat event queue size (smaller is better if the events are large). Example: 40
+
+`ejfat_uri`: EJFat instance token URI to use for this session.
+
+`ejfat_recvthreads`: Number of EJFat reassembling threads.
+
+<!-- `ejfat_readthreads`: Number of EJFat read threads. -->
+
+`ejfat_eventtimeoutms`: Timeout for event reassembly.

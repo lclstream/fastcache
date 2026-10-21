@@ -41,7 +41,7 @@ struct Config
     std::string workerurl = "inproc://worker";    // internal url, inproc modes (type 2/3) only
     RunType type;                                 // pipeline mode
     unsigned helper_threads;                      // extra sender threads, inproc modes only
-    int io_threads;                               // zmq background i/o threads in the context
+    int zmq_io_threads;                           // zmq background i/o threads in the context
     int hwm;                                      // zmq msg cap (high water mark)
     int timeout;                                  // receive timeout in ms, -1 blocks forever
     bool verbose;                                 // verbose mode to show queue depth once a second
@@ -53,14 +53,18 @@ struct Config
     bool ejfat_useLB = true;                      // Use load balancer
     bool ejfat_useIPv6 = false;                   // Use IPv6
     uint16_t ejfat_mtu;                           // interface mtu
-    int ejfat_sndbufsize;                         // send buffer size (kernel doubles it, so don't set max)
+    int ejfat_socketbufsize;                      // send/receive buffer size (kernel doubles it, so don't set max)
     float ejfat_rateGbps;                         // speed limit (can cause small bursts)
     size_t ejfat_numSendSockets;                  // ejfat send sockets
     uint16_t ejfat_dataId;                        // data id (note: might want to have this loop at some point)
     uint16_t ejfat_queueSize;                     // ejfat internal lockfree queue size
-    uint16_t dataSimulatorThreads;                // number of threads simulating data
+    bool ejfat_reportstats = true;                // report ejfat stats back to LB
+    //uint16_t dataSimulatorThreads;                // number of threads simulating data
     std::string ejfat_uri = "";                   // ejfat instance URI obtained from the load balancer
     uint16_t simdata_size_mb;                              // simulated message size
+    size_t ejfat_recvthreads;                     // number of ejfat reassembler threads
+    //size_t ejfat_readthreads;                     // number of ejfat read threads
+    int ejfat_eventtimeoutms;                     // Timeout for event reassembly (ms)
 };
 
 void load_config(const std::string& fname, Config& conf);

@@ -247,6 +247,7 @@ void SenderLockFreeWorker::run() {
         zmq_setsockopt(socket, ZMQ_SNDTIMEO, &timeout, sizeof(timeout));
     }
     if (cfg.metrics) {
+        // Note: with multiple senders this needs edited, TID added or something
         metrics_socket = create_metrics_socket(metrics_path);
     }
     while (1) {
@@ -258,7 +259,7 @@ void SenderLockFreeWorker::run() {
 
         zmq_msg_t* msg = nullptr;
         while (!queue.pop(msg)) {
-            if (shutdown_signal.load(std::memory_order_acquire) && 
+            if (shutdown_signal.load(std::memory_order_acquire) &&
                 queue.read_available() == 0) {
                 break;
             }
@@ -282,16 +283,45 @@ void SenderLockFreeWorker::run() {
     }
 }
 
+int ReceiverLockFreeWorker::receive(zmq_msg_t* msg, void* socket) {
+    int rc = zmq_msg_recv(msg, socket, 0);
+    return rc;
+}
+
+int EJFatReceiverLockFreeWorker::receive(zmq_msg_t* msg, void* /*socket*/) {
+    uint8_t *evtBuf{nullptr};
+    size_t evtSize;
+    e2sar::EventNum_t evtNum;
+    uint16_t dataId;
+    // 1000 is a timeout for an event. For now, not configurable (same as in e2sar_perf)
+    auto receive_result = reassembler->recvEvent(&evtBuf, &evtSize, &evtNum, &dataId, 1000);
+
+    if (receive_result.has_error() || receive_result.value() == -1)
+        return 0;
+
+    auto freef = [](void *data, void *hint) {
+        delete[] static_cast<uint8_t*>(data);
+    };
+    if (zmq_msg_init_data(msg, evtBuf, evtSize, freef, nullptr) != 0) {
+        delete[] evtBuf;
+        return -1;
+    }
+    return static_cast<int>(evtSize);
+}
+
 void ReceiverLockFreeWorker::run() {
-    void* socket;
+    void* socket = nullptr;
+    auto tid = std::this_thread::get_id();
+
     void* metrics_socket = nullptr;
     std::string metrics_path;
     MetricsData metrics_data;
-    auto tid = std::this_thread::get_id();
 
     std::cout << "Starting Lockfree forward. Receiver TID: " << tid << std::endl;
-    socket = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
-    zmq_setsockopt(socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
+    if (socket_type == ZMQ_PULL) {
+        socket = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
+        zmq_setsockopt(socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
+    }
     if (cfg.metrics) {
         metrics_socket = create_metrics_socket(metrics_path);
     }
@@ -300,7 +330,12 @@ void ReceiverLockFreeWorker::run() {
         zmq_msg_t msg;
         zmq_msg_init(&msg);
 
-        int rc = zmq_msg_recv(&msg, socket, 0);
+        int rc = receive(&msg, socket);
+        if (socket_type == -1 && rc == 0) {
+            // Reassembly error/probably lost event in EJFAT mode, we skip event and go on
+            zmq_msg_close(&msg);
+            continue;
+        }
         if (rc < 0) {
             zmq_msg_close(&msg);
             int err = zmq_errno();
@@ -332,8 +367,9 @@ void ReceiverLockFreeWorker::run() {
             break;
         }
     }
-
-    zmq_close(socket);
+    if (socket_type != -1) {
+        zmq_close(socket);
+    }
     if (cfg.metrics) {
         cleanup_metrics(tid, metrics_socket, metrics_path);
     }

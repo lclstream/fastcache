@@ -28,12 +28,22 @@ CacheServer::CacheServer(Config &config, std::atomic<bool>& shutdown_signal)
         std::cout << "\n----- EJFat config -----" << std::endl;
         std::cout << "Use LB:            " << cfg.ejfat_useLB << std::endl;
         std::cout << "MTU:               " << cfg.ejfat_mtu << std::endl;
-        std::cout << "Send buffer size:  " << cfg.ejfat_sndbufsize << std::endl;
+        std::cout << "Send buffer size:  " << cfg.ejfat_socketbufsize << std::endl;
         std::cout << "Rate (Gbps):       " << cfg.ejfat_rateGbps << std::endl;
         std::cout << "Send Sockets:      " << cfg.ejfat_numSendSockets << std::endl;
-        std::cout << "Data sim threads:  " << cfg.dataSimulatorThreads << std::endl;
-        std::cout << "Data ID:           " << cfg.ejfat_dataId << "\n" << std::endl;
-        std::cout << "Event Queue Size:  " << cfg.ejfat_queueSize << "\n" << std::endl;
+        //std::cout << "Data sim threads:  " << cfg.dataSimulatorThreads << std::endl;
+        std::cout << "Data ID:           " << cfg.ejfat_dataId << std::endl;
+        std::cout << "Event Queue Size:  " << cfg.ejfat_queueSize << std::endl;
+    }
+
+    if (cfg.type == 9) {
+        std::cout << "\n----- EJFat receiver config -----" << std::endl;
+        std::cout << "Use LB:                 " << cfg.ejfat_useLB << std::endl;
+        std::cout << "Send buffer size:       " << cfg.ejfat_socketbufsize << std::endl;
+        std::cout << "Report stats to LB:     " << cfg.ejfat_reportstats << std::endl;
+        std::cout << "Receiver threads:       " << cfg.ejfat_recvthreads << std::endl;
+        //std::cout << "Reading threads:        " << cfg.ejfat_readthreads << std::endl;
+        std::cout << "Timeout for reassembly: " << cfg.ejfat_eventtimeoutms << std::endl;
     }
 }
 
@@ -141,18 +151,36 @@ std::vector<std::unique_ptr<ThreadWorker>> CacheServer::create(Config& cfg, void
             break;
         case RunType::ZMQPULLinEJFatOut:
             // receiver:
-            workerlist.push_back(std::make_unique<ReceiverLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            workerlist.push_back(std::make_unique<ReceiverLockFreeWorker>(
+                zmq_ctx, cfg, queue, shutdown_signal));
             // sender:
-            workerlist.push_back(std::make_unique<EJFatSenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            workerlist.push_back(std::make_unique<EJFatSenderLockFreeWorker>(
+                zmq_ctx, cfg, queue, shutdown_signal));
             break;
         case RunType::TestInEJFatOut:
             // receiver:
-            for (int i=0; i<cfg.dataSimulatorThreads; ++i) {
-                workerlist.push_back(std::make_unique<QueueGeneratorLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
-            }
+            //for (int i=0; i<cfg.dataSimulatorThreads; ++i) {
+            workerlist.push_back(std::make_unique<QueueGeneratorLockFreeWorker>(
+                    zmq_ctx, cfg, queue, shutdown_signal));
+            //}
             // sender:
-            workerlist.push_back(std::make_unique<EJFatSenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            workerlist.push_back(std::make_unique<EJFatSenderLockFreeWorker>(
+                zmq_ctx, cfg, queue, shutdown_signal));
             break;
+        case 9: {//lock free queue with EJFat receiver and ZMQ REPLY out
+            // receiver:
+            workerlist.push_back(std::make_unique<EJFatReceiverLockFreeWorker>(
+                zmq_ctx, cfg, queue, shutdown_signal));
+            //std::unique_ptr<EJFatReceiverLockFreeWorker> rsbmlr = 
+            //    std::make_unique<EJFatReceiverLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal);
+            //for (int i=0; i<cfg.ejfat_readthreads; ++i) {
+            //
+            //}
+            // sender:
+            workerlist.push_back(std::make_unique<ReplySenderLockFreeWorker>(
+                zmq_ctx, cfg, queue, shutdown_signal));
+            break;
+        }
         default:
             break;
     }

@@ -36,7 +36,12 @@ LDFLAGS := $(addprefix -L,$(LIB_DIRS)) \
            $(addprefix -Wl$(,)-rpath-link$(,),$(LIB_DIRS)) \
            $(addprefix -Wl$(,)-rpath$(,),$(LIB_DIRS))
 
-LDLIBS := -lzmq -pthread -le2sar -lgrpc -lgpr -lprotobuf -lgrpc++ -laddress_sorting -labsl_synchronization -lboost_thread -lboost_chrono -lboost_system -lboost_log -lboost_log_setup -lboost_url -luring
+ABSL_LIBS := -labsl_synchronization -labsl_cord -labsl_cordz_info -labsl_cordz_functions -labsl_strings \
+             -labsl_log_internal_check_op -labsl_log_internal_message -labsl_log_internal_nullguard
+
+BOOST_LIBS := -lboost_thread -lboost_chrono -lboost_system -lboost_log -lboost_log_setup -lboost_url
+
+LDLIBS := -lzmq -pthread -le2sar -lgrpc -lgpr -lprotobuf -lgrpc++ -laddress_sorting -luring $(BOOST_LIBS) $(ABSL_LIBS)
 
 SRC_DIR := src
 TEST_DIR := tests
@@ -67,7 +72,7 @@ build/receiver.o: src/receiver/receiver.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 $(RECEIVER): build/receiver.o
-	$(CXX) $< $(LDFLAGS) $(LDLIBS) -lgpr -labsl_cord -labsl_cordz_info -labsl_log_internal_check_op -labsl_log_internal_message -labsl_log_internal_nullguard -labsl_strings -labsl_cordz_functions -o $@
+	$(CXX) $< $(LDFLAGS) $(LDLIBS) -lgpr -o $@
 
 $(TARGET): $(OBJS)
 	$(CXX) $(OBJS) $(LDFLAGS) $(LDLIBS) -o $(TARGET)
