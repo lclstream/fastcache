@@ -52,7 +52,8 @@ void Test_create_socket_connect_push() {
     SocketConfig config{ZMQ_PUSH, cfg.hwm, "inproc://test2", false};
 
     void* secondary_socket = zmq_socket(zmq_ctx, ZMQ_PULL);
-    assert(zmq_bind(secondary_socket, "inproc://test2") == 0);
+    int res = zmq_bind(secondary_socket, "inproc://test2");
+    assert(res == 0);
 
     void* socket = worker.create_socket(zmq_ctx, config);
     assert(socket != nullptr);
@@ -80,16 +81,20 @@ void Test_send_receive() {
     const char* url_out = "inproc://sr_test_out";
 
     void* sender1 = zmq_socket(zmq_ctx, ZMQ_PUSH);
-    assert(zmq_bind(sender1, url_in) == 0);
+    int res = zmq_bind(sender1, url_in);
+    assert(res == 0);
 
     void* receiver1 = zmq_socket(zmq_ctx, ZMQ_PULL);
-    assert(zmq_connect(receiver1, url_in) == 0);
+    int res2 = zmq_connect(receiver1, url_in);
+    assert(res2 == 0);
 
     void* sender2 = zmq_socket(zmq_ctx, ZMQ_PUSH);
-    assert(zmq_bind(sender2, url_out) == 0);
+    int res3 = zmq_bind(sender2, url_out);
+    assert(res3 == 0);
 
     void* receiver2 = zmq_socket(zmq_ctx, ZMQ_PULL);
-    assert(zmq_connect(receiver2, url_out) == 0);
+    int res4 = zmq_connect(receiver2, url_out);
+    assert(res4 == 0);
 
     const char* expected_data = "Test123";
     int send_rc = zmq_send(sender1, expected_data, strlen(expected_data), 0);

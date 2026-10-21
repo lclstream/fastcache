@@ -12,9 +12,9 @@ Multi threaded cache that runs on the data transfer nodes to stream data to exte
 
 ```sh
 
-cmake  --preset  default
+cmake  --preset  release
 
-cmake  --build  --preset  default
+cmake  --build  --preset  release
 
 ```
 
