@@ -10,11 +10,7 @@ Multi threaded cache that runs on the data transfer nodes to stream data to exte
 
 ## Build
 
-<<<<<<< HEAD
-### Build with vcpkg
-=======
 Set `GRPC_PATH` and `EJFAT_PATH`env variables to gRPC and EJFat paths.
->>>>>>> e76c8a4 (Added basic EJFat worker)
 
 ```sh
 
@@ -41,6 +37,17 @@ make
 ```
 
 Config keys: `inurl`, `outurl`, `num_workers`, `io_threads`, `hwm`.
+
+## Docker
+
+Build it with:
+```sh
+podman-hpc build --network=slirp4netns -t fastcache_ejfat:1.0 .
+```
+Then run:
+```sh
+podman-hpc run --rm --env EJFAT_URI="<REDACTED>" --network host -v <config_location>:/usr/local/bin/default.json localhost/fastcache_ejfat:1.0 /usr/local/bin/lclstream-fastcache /usr/local/bin/default.json
+```
 
 ## Config
 
@@ -69,6 +76,9 @@ Outgoing ZMQ URL where the receivers can connect to.
 - `TestIn`: mode for testing incoming connection speed (no queue)
 - `ZMQPULLinEJFatOut`: lock-free EJFat forward with data from lclstreamer
 - `TestInEJFatOut`: lock-free EJFat forward with simulated data
+- `EJFatInZMQPUSHOut`: lock-free EJFat in, ZMQ PUSH out
+- `EJFatInZMQREPOut`: lock-free EJFat in, ZMQ REPLY out
+- `EJFatInZMQROUTEROut`: lock-free EJFat in, ZMQ ROUTER out
 
 `helper_threads`: (optional, default: `0`) Number of extra worker threads used (not used in default mode)
 
@@ -96,30 +106,30 @@ Outgoing ZMQ URL where the receivers can connect to.
 
 #### EJFat config
 
-`ejfat_use_LB`: Use load balancer (LB) with EJFat output.
+`uselb`: (optional, default: `true` Sender/Receiver) Use load balancer (LB) with EJFat output.
 
-`ejfat_useIPv6`: Use IPv6 and not IPv4.
+`useipv6`: (optional, default: `false` Sender/Receiver) Use IPv6 and not IPv4.
 
-`mtu`: MTU size, 9000 default.
+`mtu`: (optional, default: `9000` Sender) MTU size, 9000 default.
 
-`ejfat_socketbufsize`: Send/Receive buffer size for the socket (recommended to use wmem_max).
+`socketbufsize`: (optional, default: `16777216` Sender/Receiver) Buffer size for the socket (kernel doubles it, best to have wmem_max).
 
-`rateGbps`: Limit the send rate in Gbit/s.
+`rate_gbps`: (optional, default: `-1.0` Sender) Limit the send rate in Gbit/s.
 
-`numSendSockets`: Number of send sockets per thread.
+`num_sendsockets`: (optional, default: `8` Sender) Number of send sockets per thread.
 
-`dataId`: EJFat data source ID number. Use different with multiple senders.
+`data_id`: (optional, default: `1` Sender) EJFat data source ID number. Use different with multiple senders.
 
-`ejfat_reportstats`: Report receiver stats back to LB .
+`queueSize`: (optional, default: `40` Sender) EJFat event queue size (smaller is better if the events are large).
+
+`reportstats`: (optional, default: `true` Receiver) Report receiver stats back to LB .
+
+`recvthreads`: (optional, default: `1` Receiver) Number of EJFat reassembling threads.
+
+`eventtimeoutms`: (optional, default: `500` Receiver) Timeout for event reassembly in ms.
+
+`ejfat_uri`: (required, no default value, Sender/Receiver) EJFat instance token URI to use for this session. Must be set in the environment as `EJFAT_URI`.
 
 <!-- `dataSimulatorThreads`: Number of data simulator worker threads launched. -->
-
-`queueSize`: EJFat event queue size (smaller is better if the events are large). Example: 40
-
-`ejfat_uri`: EJFat instance token URI to use for this session.
-
-`ejfat_recvthreads`: Number of EJFat reassembling threads.
-
 <!-- `ejfat_readthreads`: Number of EJFat read threads. -->
 
-`ejfat_eventtimeoutms`: Timeout for event reassembly.

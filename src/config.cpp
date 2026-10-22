@@ -7,7 +7,8 @@ void load_config(const std::string& fname, Config& cfg) {
     std::ifstream file(fname);
     std::cout << "\nUsing config file: " << fname << std::endl;
     if (!file) {
-        std::cout << "Couldnt open config file " << fname << std::endl;
+        std::cout << "Error: couldnt open config file " << fname << std::endl;
+        std::exit(1);
     }
 
     nlohmann::json jobj;
@@ -32,24 +33,28 @@ void load_config(const std::string& fname, Config& cfg) {
     cfg.metrics_cache_id = metrics_opts.value("cache_id", 1);
     cfg.metrics_interval = metrics_opts.value("metrics_interval", 10000);
 
-    cfg.ejfat_useIPv6 = ejfat_opts.value("ejfat_useIPv6", false);
-    cfg.ejfat_useLB = ejfat_opts.value("ejfat_useLB", true);
-    cfg.ejfat_mtu = ejfat_opts.value("mtu", 9000);
+    cfg.ejfat_useLB = ejfat_opts.value("uselb", true);
+    cfg.ejfat_useIPv6 = ejfat_opts.value("useipv6", false);
     // setsockopt doubles the buffer size (this is assuming wmem_max is 2GB)
-    int ejfat_rawBufSize = ejfat_opts.value("ejfat_socketbufsize", 16777216);
+    int ejfat_rawBufSize = ejfat_opts.value("socketbufsize", 16777216);
     cfg.ejfat_socketbufsize = (ejfat_rawBufSize > 1073741823LL) ?
                                         (ejfat_rawBufSize / 2) : (ejfat_rawBufSize);
-    cfg.ejfat_rateGbps = ejfat_opts.value("rateGbps", -1.0);
-    cfg.ejfat_numSendSockets = ejfat_opts.value("numSendSockets", 8);
-    cfg.ejfat_reportstats = ejfat_opts.value("ejfat_reportstats", true);
-    //cfg.dataSimulatorThreads = ejfat_opts.value("dataSimulatorThreads", 1);
-    cfg.ejfat_queueSize = ejfat_opts.value("queueSize", 40);
-    cfg.ejfat_dataId = ejfat_opts.value("dataId", 1);
-    cfg.ejfat_recvthreads = ejfat_opts.value("ejfat_recvthreads", 1);
+    cfg.ejfat_mtu = ejfat_opts.value("mtu", 9000);
+    cfg.ejfat_rateGbps = ejfat_opts.value("rate_gbps", -1.0);
+    cfg.ejfat_numSendSockets = ejfat_opts.value("num_sendsockets", 8);
+    cfg.ejfat_dataId = ejfat_opts.value("data_id", 1);
+    cfg.ejfat_queueSize = ejfat_opts.value("queuesize", 40);
+    cfg.ejfat_reportstats = ejfat_opts.value("reportstats", true);
+    cfg.ejfat_recvthreads = ejfat_opts.value("recvthreads", 1);
+    cfg.ejfat_eventtimeoutms = ejfat_opts.value("eventtimeoutms", 500);
     //cfg.ejfat_readthreads = ejfat_opts.value("ejfat_readthreads", 1);
-    cfg.ejfat_eventtimeoutms = ejfat_opts.value("ejfat_eventtimeoutms", 500);
+    //cfg.dataSimulatorThreads = ejfat_opts.value("dataSimulatorThreads", 1);
 
-    if (cfg.type == 7 || cfg.type == 8 || cfg.type == 9) {
+    if (cfg.type == RunType::ZMQPULLinEJFatOut ||
+        cfg.type == RunType::TestInEJFatOut ||
+        cfg.type == RunType::EJFatInZMQPUSHOut ||
+        cfg.type == RunType::EJFatInZMQREPOut ||
+        cfg.type == RunType::EJFatInZMQROUTEROut) {
         const char* uri_result = std::getenv("EJFAT_URI");
         if (!uri_result) {
             std::cerr << "Error: EJFAT_URI environment variable needs to be set." << std::endl;
@@ -63,14 +68,16 @@ void load_config(const std::string& fname, Config& cfg) {
         std::exit(1);
     }
 
-    if (cfg.type == 9) {
+    if (cfg.type == RunType::EJFatInZMQPUSHOut ||
+        cfg.type == RunType::EJFatInZMQREPOut ||
+        cfg.type == RunType::EJFatInZMQROUTEROut) {
         struct in_addr addr4;
         struct in6_addr addr6;
         bool is_ipv4 = (inet_pton(AF_INET, cfg.inurl.c_str(), &addr4) == 1);
         bool is_ipv6 = (inet_pton(AF_INET6, cfg.inurl.c_str(), &addr6) == 1);
         if (!is_ipv4 && !is_ipv6) {
             std::cerr << "Error: 'inurl' for EJFAT receiver has to be IPv4 or IPv6 address.\n" << std::endl;
+            std::exit(1);
         }
-        std::exit(1);
     }
 }
