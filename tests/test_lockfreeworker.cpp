@@ -87,7 +87,7 @@ void Test_ReplySenderLockFreeWorker_receive2() {
     Action act = worker.receive(rep_socket);
     assert(act == Action::Continue);
 
-    // 2. with shutdown_signal -> Action::Break
+    // 2. with shutdown -> Action::Break
     shutdown_signal.store(true, std::memory_order_release);
     act = worker.receive(rep_socket);
     assert(act == Action::Break);
@@ -140,11 +140,11 @@ void Test_SenderLockFreeWorker_send() {
     const char* data = "Test123";
     int size = 7;
 
-    zmq_msg_t msg;
-    zmq_msg_init_size(&msg, size);
-    memcpy(zmq_msg_data(&msg), data, size);
+    zmq_msg_t* msg = new zmq_msg_t;
+    zmq_msg_init_size(msg, size);
+    memcpy(zmq_msg_data(msg), data, size);
 
-    int rc = worker.send(push_socket, &msg);
+    int rc = worker.send(push_socket, msg);
     assert(rc == size);
 
     char buf[16] = {0};
@@ -153,7 +153,7 @@ void Test_SenderLockFreeWorker_send() {
     int res3 = memcmp(buf, data, size);
     assert(res3 == 0);
 
-    zmq_msg_close(&msg);
+    zmq_msg_close(msg);
     zmq_close(push_socket);
     zmq_close(pull_socket);
     zmq_ctx_term(zmq_ctx);
@@ -183,11 +183,11 @@ void Test_RouterSenderLockFreeWorker_send() {
     Action act = worker.receive(router_socket);
     assert(act == Action::Resume);
 
-    zmq_msg_t reply_msg;
-    zmq_msg_init_size(&reply_msg, 7);
-    memcpy(zmq_msg_data(&reply_msg), data, size);
+    zmq_msg_t* reply_msg = new zmq_msg_t;
+    zmq_msg_init_size(reply_msg, 7);
+    memcpy(zmq_msg_data(reply_msg), data, size);
 
-    int send_rc = worker.send(router_socket, &reply_msg);
+    int send_rc = worker.send(router_socket, reply_msg);
     assert(send_rc == size);
 
     char empty_buf[16] = {0};
@@ -202,7 +202,7 @@ void Test_RouterSenderLockFreeWorker_send() {
     int res3 = memcmp(data_buf, data, size);
     assert(res3 == 0);
 
-    zmq_msg_close(&reply_msg);
+    zmq_msg_close(reply_msg);
     zmq_close(router_socket);
     zmq_close(dealer_socket);
     zmq_ctx_term(zmq_ctx);
