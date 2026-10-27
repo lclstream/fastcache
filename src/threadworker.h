@@ -38,7 +38,7 @@ protected:
     int send_receive(void* incoming, void* outgoing);
 
 protected:
-    void *zmq_ctx;
+    void* zmq_ctx;
     const Config cfg;
 };
 
