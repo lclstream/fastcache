@@ -1,34 +1,83 @@
 #include <iostream>
 #include <fstream>
 #include "config.h"
+//#include <arpa/inet.h>
 
 void load_config(const std::string& fname, Config& cfg) {
     std::ifstream file(fname);
     std::cout << "\nUsing config file: " << fname << std::endl;
     if (!file) {
-        std::cout << "Couldnt open config file " << fname << std::endl;
+        std::cout << "Error: couldnt open config file " << fname << std::endl;
+        std::exit(1);
     }
 
     nlohmann::json jobj;
     file >> jobj;
 
-    cfg.inurl = jobj.at("inurl").get<std::string>();
-    cfg.outurl = jobj.value("outurl", "");
-    cfg.type = jobj.value("type", RunType::LockFreePush);
-    cfg.helper_threads = jobj.value("helper_threads", 0);
-    cfg.io_threads = jobj.value("io_threads", 16);
-    cfg.hwm = jobj.value("hwm", 10);
-    cfg.timeout = jobj.value("timeout", -1);
-    cfg.verbose = jobj.value("verbose", false);
-    cfg.metrics = jobj.value("metrics", false);
-    cfg.metrics_interval = jobj.value("metrics_interval", 10000);
-    cfg.cache_id = jobj.value("cache_id", 1);
-    cfg.simdata_size_mb = jobj.value("simdata_size_mb", 32);
-    cfg.datasim_threads = jobj.value("datasim_threads", 1);
+    auto fastcache_opts = jobj.value("fastcache", nlohmann::json::object());
+    auto metrics_opts = jobj.value("metrics", nlohmann::json::object());
+    auto ejfat_opts = jobj.value("ejfat", nlohmann::json::object());
+
+    cfg.inurl = fastcache_opts.at("inurl").get<std::string>();
+    cfg.outurl = fastcache_opts.value("outurl", "");
+    cfg.workerurl = fastcache_opts.value("workerurl", "inproc://worker");
+    cfg.type = fastcache_opts.value("type", RunType::LockFreePush);
+    cfg.helper_threads = fastcache_opts.value("helper_threads", 0);
+    cfg.zmq_io_threads = fastcache_opts.value("zmq_io_threads", 16);
+    cfg.hwm = fastcache_opts.value("hwm", 10);
+    cfg.timeout = fastcache_opts.value("timeout", -1);
+    cfg.verbose = fastcache_opts.value("verbose", false);
+    cfg.simdata_size_mb = fastcache_opts.value("simdata_size_mb", 32);
+
+    cfg.metrics = metrics_opts.value("metrics", false);
+    cfg.metrics_cache_id = metrics_opts.value("cache_id", 1);
+    cfg.metrics_interval = metrics_opts.value("metrics_interval", 10000);
+
+    cfg.ejfat_useLB = ejfat_opts.value("uselb", true);
+    cfg.ejfat_useIPv6 = ejfat_opts.value("useipv6", false);
+    // setsockopt doubles the buffer size (this is assuming wmem_max is 2GB)
+    int ejfat_rawBufSize = ejfat_opts.value("socketbufsize", 16777216);
+    cfg.ejfat_socketbufsize = (ejfat_rawBufSize > 1073741823LL) ?
+                                        (ejfat_rawBufSize / 2) : (ejfat_rawBufSize);
+    cfg.ejfat_mtu = ejfat_opts.value("mtu", 9000);
+    cfg.ejfat_rateGbps = ejfat_opts.value("rate_gbps", -1.0);
+    cfg.ejfat_numSendSockets = ejfat_opts.value("num_sendsockets", 8);
+    cfg.ejfat_dataId = ejfat_opts.value("data_id", 1);
+    cfg.ejfat_queueSize = ejfat_opts.value("queuesize", 40);
+    cfg.ejfat_reportstats = ejfat_opts.value("reportstats", true);
+    cfg.ejfat_recvthreads = ejfat_opts.value("recvthreads", 1);
+    cfg.ejfat_eventtimeoutms = ejfat_opts.value("eventtimeoutms", 500);
+    //cfg.ejfat_readthreads = ejfat_opts.value("ejfat_readthreads", 1);
+    //cfg.dataSimulatorThreads = ejfat_opts.value("dataSimulatorThreads", 1);
+
+    if (cfg.type == RunType::ZMQPULLinEJFatOut ||
+        cfg.type == RunType::TestInEJFatOut ||
+        cfg.type == RunType::EJFatInZMQPUSHOut ||
+        cfg.type == RunType::EJFatInZMQREPOut ||
+        cfg.type == RunType::EJFatInZMQROUTEROut) {
+        const char* uri_result = std::getenv("EJFAT_URI");
+        if (!uri_result) {
+            std::cerr << "Error: EJFAT_URI environment variable needs to be set." << std::endl;
+            std::exit(1);
+        }
+        cfg.ejfat_uri = uri_result;
+    }
 
     if (cfg.metrics_interval <= 0) {
-       std::cerr << "Fatal: metrics_interval must be bigger than 0.\n";
+        std::cerr << "Error: metrics_interval must be bigger than 0.\n";
         std::exit(1);
     }
 
+    if (cfg.type == RunType::EJFatInZMQPUSHOut ||
+        cfg.type == RunType::EJFatInZMQREPOut ||
+        cfg.type == RunType::EJFatInZMQROUTEROut) {
+        struct in_addr addr4;
+        struct in6_addr addr6;
+        bool is_ipv4 = (inet_pton(AF_INET, cfg.inurl.c_str(), &addr4) == 1);
+        bool is_ipv6 = (inet_pton(AF_INET6, cfg.inurl.c_str(), &addr6) == 1);
+        if (!is_ipv4 && !is_ipv6) {
+            std::cerr << "Error: 'inurl' for EJFAT receiver has to be IPv4 or IPv6 address.\n" << std::endl;
+            std::exit(1);
+        }
+    }
 }

@@ -9,6 +9,7 @@ void* ThreadWorker::create_socket(void* ctx, const SocketConfig& socketcfg) {
 
     zmq_setsockopt(socket, socketcfg.type == ZMQ_PULL ? ZMQ_RCVHWM:ZMQ_SNDHWM,
                    &socketcfg.hwm, sizeof(socketcfg.hwm));
+    zmq_setsockopt(socket, ZMQ_LINGER, &cfg.timeout, sizeof(cfg.timeout));
 
     if (socketcfg.isbind) {
         zmq_bind(socket, socketcfg.url.c_str());
@@ -17,7 +18,6 @@ void* ThreadWorker::create_socket(void* ctx, const SocketConfig& socketcfg) {
     }
 
     return socket;
-
 }
 
 int ThreadWorker::send_receive(void* incoming, void* outgoing) {
@@ -41,8 +41,8 @@ int ThreadWorker::send_receive(void* incoming, void* outgoing) {
 }
 
 void ProxyWorker::run() {
-    void *incoming = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
-    void *outgoing = create_socket(zmq_ctx, {ZMQ_PUSH, cfg.hwm, cfg.outurl, true});
+    void* incoming = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
+    void* outgoing = create_socket(zmq_ctx, {ZMQ_PUSH, cfg.hwm, cfg.outurl, true});
 
     std::cout << "Starting simple forward with 1 thread. TID"
               << std::this_thread::get_id()
@@ -63,8 +63,8 @@ void ProxyWorker::run() {
 }
 
 void InprocWorker::run() {
-    void *incoming;
-    void *outgoing;
+    void* incoming;
+    void* outgoing;
     auto tid = std::this_thread::get_id();
 
     if (!sender) {
@@ -91,7 +91,7 @@ void InprocWorker::run() {
 void* LockFreeWorker::create_metrics_socket(std::string& metrics_path) {
     int hwm = 10000;
     std::string role = sender ? "sender" : "receiver";
-    metrics_path = "/tmp/fastcache-metrics-" + role + "-" + std::to_string(cfg.cache_id);
+    metrics_path = "/tmp/fastcache-metrics-" + role + "-" + std::to_string(cfg.metrics_cache_id);
     std::string sender_metrics_url = "ipc://" + metrics_path;
     return create_socket(zmq_ctx, {ZMQ_PUB, hwm, sender_metrics_url, true});
 }
@@ -180,15 +180,20 @@ Action RouterSenderLockFreeWorker::receive(void* socket) {
     return Action::Resume;
 }
 
+void SenderLockFreeWorker::free_msg(zmq_msg_t* msg) {
+    if (msg) {
+        zmq_msg_close(msg);
+        delete msg;
+    }
+}
+
 int SenderLockFreeWorker::send(void* socket, zmq_msg_t* msg) {
-    return zmq_msg_send(msg, socket, 0);
+    int rc = zmq_msg_send(msg, socket, 0);
+    free_msg(msg);
+    return rc;
 }
 
 int RouterSenderLockFreeWorker::send(void* socket, zmq_msg_t* msg) {
-    //zmq_msg_t id_copy;
-    //zmq_msg_init(&id_copy);
-    //zmq_msg_copy(&id_copy, &id);
-    //int rc = zmq_msg_send(&id_copy, socket, ZMQ_SNDMORE);
     int rc = zmq_msg_send(&id, socket, ZMQ_SNDMORE);
     if (rc < 0) {
         //zmq_msg_close(&id_copy);
@@ -202,20 +207,50 @@ int RouterSenderLockFreeWorker::send(void* socket, zmq_msg_t* msg) {
         zmq_msg_close(&empty);
         return -1;
     }
-    return zmq_msg_send(msg, socket, 0);
+    rc = zmq_msg_send(msg, socket, 0);
+    free_msg(msg);
+    return rc;
+}
+
+void EJFatSenderLockFreeWorker::free_msg(boost::any arg) {
+    zmq_msg_t* msg = boost::any_cast<zmq_msg_t*>(arg);
+    SenderLockFreeWorker::free_msg(msg);
+}
+
+int EJFatSenderLockFreeWorker::send(void* /*socket*/, zmq_msg_t* msg) {
+    uint8_t* event_data = reinterpret_cast<uint8_t*>(zmq_msg_data(msg));
+    std::size_t event_len = zmq_msg_size(msg);
+    while (1) {
+        auto send_result = segmenter->addToSendQueue(event_data, event_len, 0, 0, 0, EJFatSenderLockFreeWorker::free_msg, msg);
+        if (!send_result.has_error()) {
+            return static_cast<int>(event_len);
+        } else {
+            if (shutdown_signal.load(std::memory_order_acquire)) {
+                SenderLockFreeWorker::free_msg(msg);
+                return -1;
+            }
+            std::this_thread::sleep_for(std::chrono::microseconds(500));
+        }
+    }
 }
 
 void SenderLockFreeWorker::run() {
-    void* socket;
+    void* socket = nullptr;
     void* metrics_socket = nullptr;
     std::string metrics_path;
     MetricsData metrics_data;
     auto tid = std::this_thread::get_id();
 
     std::cout << "Starting Lockfree forward. Sender TID: " << tid << std::endl;
-    socket = create_socket(zmq_ctx, {socket_type, cfg.hwm, cfg.outurl, true});
-    zmq_setsockopt(socket, ZMQ_SNDTIMEO, &timeout, sizeof(timeout));
+    if (socket_type > 0) {
+        socket = create_socket(zmq_ctx, {socket_type, cfg.hwm, cfg.outurl, true});
+        zmq_setsockopt(socket, ZMQ_SNDTIMEO, &timeout, sizeof(timeout));
+        if (socket_type == ZMQ_REP || socket_type == ZMQ_ROUTER) {
+            zmq_setsockopt(socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
+        }
+    }
     if (cfg.metrics) {
+        // Note: with multiple senders this needs edited, TID added or something
         metrics_socket = create_metrics_socket(metrics_path);
     }
     while (1) {
@@ -227,7 +262,7 @@ void SenderLockFreeWorker::run() {
 
         zmq_msg_t* msg = nullptr;
         while (!queue.pop(msg)) {
-            if (shutdown_signal.load(std::memory_order_acquire) && 
+            if (shutdown_signal.load(std::memory_order_acquire) &&
                 queue.read_available() == 0) {
                 break;
             }
@@ -235,29 +270,61 @@ void SenderLockFreeWorker::run() {
         }
         if (shutdown_signal.load(std::memory_order_acquire) && msg == nullptr) break;
         int rc = send(socket, msg);
-        zmq_msg_close(msg);
-        delete msg;
-        if (rc < 0) break;
+        if (rc < 0) {
+            shutdown_signal.store(true, std::memory_order_release);
+            break;
+        }
         if (cfg.metrics) {
             send_metrics(metrics_data, rc, metrics_socket);
         }
     }
-    zmq_close(socket);
+    if (socket_type > 0) {
+        zmq_close(socket);
+    }
     if (cfg.metrics) {
         cleanup_metrics(tid, metrics_socket, metrics_path);
     }
 }
 
+int ReceiverLockFreeWorker::receive(zmq_msg_t* msg, void* socket) {
+    int rc = zmq_msg_recv(msg, socket, 0);
+    return rc;
+}
+
+int EJFatReceiverLockFreeWorker::receive(zmq_msg_t* msg, void* /*socket*/) {
+    uint8_t* evtBuf{nullptr};
+    size_t evtSize;
+    e2sar::EventNum_t evtNum;
+    uint16_t dataId;
+    // 1000 is a timeout for an event. For now, not configurable (same as in e2sar_perf)
+    auto receive_result = reassembler->recvEvent(&evtBuf, &evtSize, &evtNum, &dataId, 1000);
+
+    if (receive_result.has_error() || receive_result.value() == -1)
+        return 0;
+
+    auto freef = [](void* data, void* /*hint*/) {
+        delete[] static_cast<uint8_t*>(data);
+    };
+    if (zmq_msg_init_data(msg, evtBuf, evtSize, freef, nullptr) != 0) {
+        delete[] evtBuf;
+        return -1;
+    }
+    return static_cast<int>(evtSize);
+}
+
 void ReceiverLockFreeWorker::run() {
-    void* socket;
+    void* socket = nullptr;
+    auto tid = std::this_thread::get_id();
+
     void* metrics_socket = nullptr;
     std::string metrics_path;
     MetricsData metrics_data;
-    auto tid = std::this_thread::get_id();
 
     std::cout << "Starting Lockfree forward. Receiver TID: " << tid << std::endl;
-    socket = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
-    zmq_setsockopt(socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
+    if (socket_type == ZMQ_PULL) {
+        socket = create_socket(zmq_ctx, {ZMQ_PULL, cfg.hwm, cfg.inurl, true});
+        zmq_setsockopt(socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
+    }
     if (cfg.metrics) {
         metrics_socket = create_metrics_socket(metrics_path);
     }
@@ -266,7 +333,13 @@ void ReceiverLockFreeWorker::run() {
         zmq_msg_t msg;
         zmq_msg_init(&msg);
 
-        int rc = zmq_msg_recv(&msg, socket, 0);
+        int rc = receive(&msg, socket);
+        if (socket_type == -1 && rc == 0) {
+            // Reassembly error/probably lost event in EJFAT mode, we skip event and go on
+            zmq_msg_close(&msg);
+            if (shutdown_signal.load(std::memory_order_acquire)) break;
+            continue;
+        }
         if (rc < 0) {
             zmq_msg_close(&msg);
             int err = zmq_errno();
@@ -293,13 +366,20 @@ void ReceiverLockFreeWorker::run() {
         zmq_msg_move(qmsg, &msg);
         while (!queue.push(qmsg)) {
             std::this_thread::sleep_for(std::chrono::microseconds(50));
+            if (shutdown_signal.load(std::memory_order_acquire)) {
+                zmq_msg_close(qmsg);
+                delete qmsg;
+                qmsg = nullptr;
+                break;
+            }
         }
         if (shutdown_signal.load(std::memory_order_acquire)) {
             break;
         }
     }
-
-    zmq_close(socket);
+    if (socket_type != -1) {
+        zmq_close(socket);
+    }
     if (cfg.metrics) {
         cleanup_metrics(tid, metrics_socket, metrics_path);
     }
