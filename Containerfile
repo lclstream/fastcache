@@ -19,8 +19,8 @@ COPY . .
 # runtime stage needs no extra packages.
 RUN --mount=type=cache,target=/root/.cache/vcpkg \
     VCPKG_BINARY_SOURCES="clear;files,/root/.cache/vcpkg,readwrite" \
-    cmake --preset default \
-    && cmake --build build --preset default
+    cmake --preset release \
+    && cmake --build build --preset release
 
 FROM docker.io/debian:trixie-slim
 
