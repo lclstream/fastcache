@@ -30,6 +30,7 @@ void load_config(const std::string& fname, Config& cfg) {
     cfg.simdata_size_mb = fastcache_opts.value("simdata_size_mb", 32);
 
     cfg.metrics = metrics_opts.value("metrics", false);
+    cfg.metrics_url = metrics_opts.value("metrics_url", "");
     cfg.metrics_cache_id = metrics_opts.value("cache_id", 1);
     cfg.metrics_interval = metrics_opts.value("metrics_interval", 10000);
 
@@ -47,6 +48,8 @@ void load_config(const std::string& fname, Config& cfg) {
     cfg.ejfat_reportstats = ejfat_opts.value("reportstats", true);
     cfg.ejfat_recvthreads = ejfat_opts.value("recvthreads", 1);
     cfg.ejfat_eventtimeoutms = ejfat_opts.value("eventtimeoutms", 500);
+    cfg.ejfat_period_ms = ejfat_opts.value("period_ms", 1000);
+    cfg.ejfat_starting_port = ejfat_opts.value("starting_port", 10000);
     //cfg.ejfat_readthreads = ejfat_opts.value("ejfat_readthreads", 1);
     //cfg.dataSimulatorThreads = ejfat_opts.value("dataSimulatorThreads", 1);
 
@@ -64,7 +67,7 @@ void load_config(const std::string& fname, Config& cfg) {
     }
 
     if (cfg.metrics_interval <= 0) {
-        std::cerr << "Error: metrics_interval must be bigger than 0.\n";
+        std::cerr << "Error: metrics_interval must be bigger than 0." << std::endl;
         std::exit(1);
     }
 
@@ -76,8 +79,17 @@ void load_config(const std::string& fname, Config& cfg) {
         bool is_ipv4 = (inet_pton(AF_INET, cfg.inurl.c_str(), &addr4) == 1);
         bool is_ipv6 = (inet_pton(AF_INET6, cfg.inurl.c_str(), &addr6) == 1);
         if (!is_ipv4 && !is_ipv6) {
-            std::cerr << "Error: 'inurl' for EJFAT receiver has to be IPv4 or IPv6 address.\n" << std::endl;
+            std::cerr << "Error: 'inurl' for EJFAT receiver must be IPv4 or IPv6 address." << std::endl;
             std::exit(1);
         }
+    }
+
+    if (cfg.type == RunType::BindInproc) {
+        cfg.helper_threads = 0;
+    }
+
+    if (cfg.metrics && cfg.metrics_url == "") {
+        std::cerr << "Metrics URL can't be empty string if metrics are enabled." << std::endl;
+        std::exit(1);
     }
 }

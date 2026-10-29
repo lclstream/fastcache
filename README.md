@@ -100,6 +100,8 @@ Outgoing ZMQ URL where the receivers can connect to.
 
 `metrics`: (optional, default: `false`) Enables metrics to be sent via an ipc socket. Available only for type 4. IPC socket address is "ipc:///tmp/fastcache-metrics-receiver(/sender)-12345" (number is the cache id)
 
+`ejfat_metrics_url`: (default: `""`) Must be set if metrics is enabled. URL to send metrics to.
+
 `metrics_interval`: (optional, default: `10000`) Number of messages before metrics are sent to the ipc socket.
 
 `cache_id`: (optional, default: `1`) Unique identifier for the ipc metrics url
@@ -127,6 +129,10 @@ Outgoing ZMQ URL where the receivers can connect to.
 `recvthreads`: (optional, default: `1` Receiver) Number of EJFat reassembling threads.
 
 `eventtimeoutms`: (optional, default: `500` Receiver) Timeout for event reassembly in ms.
+
+`period_ms`: (optional, default: `1000` Receiver) Period of the send state thread (ms).
+
+`starting_port`: (optional, default: `10000` Receiver) Starting port number on which we are listening.
 
 `ejfat_uri`: (required, no default value, Sender/Receiver) EJFat instance token URI to use for this session. Must be set in the environment as `EJFAT_URI`.
 

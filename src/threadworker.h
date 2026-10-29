@@ -42,6 +42,24 @@ protected:
     const Config cfg;
 };
 
+class WorkerFactory {
+public:
+    static std::vector<std::unique_ptr<ThreadWorker>> createWorkers(
+        void* zmq_ctx,
+        const Config& cfg,
+        MessageQueue& queue,
+        std::atomic<bool>& shutdown_signal
+    );
+private:
+    static e2sar::Reassembler* addEJFatReceiver(
+        std::vector<std::unique_ptr<ThreadWorker>>& workerlist,
+        void* zmq_ctx,
+        const Config& cfg,
+        MessageQueue& queue,
+        std::atomic<bool>& shutdown_signal
+    );
+};
+
 class ProxyWorker : public ThreadWorker {
 public:
     ProxyWorker(void* ctx, const Config& cfg, bool proxy)
@@ -83,6 +101,7 @@ protected:
     std::string create_metrics(uint64_t rc_count, uint64_t msg_count, uint64_t metrics_count);
     void send_metrics(MetricsData& metrics, int rc, void* metrics_socket);
     void* create_metrics_socket(std::string& metrics_path);
+    void* create_metrics_socket();
     void cleanup_metrics(std::thread::id tid, void* metrics_socket, std::string& metrics_path);
 };
 
@@ -111,7 +130,7 @@ public:
         ) : ReceiverLockFreeWorker(ctx, cfg, queue, shutdown_signal, -1),
         reassembler_flags([&cfg] {
             e2sar::Reassembler::ReassemblerFlags flags;
-            flags.period_ms = 1000;
+            flags.period_ms = cfg.ejfat_period_ms;
             flags.useCP = cfg.ejfat_useLB;
             flags.rcvSocketBufSize = cfg.ejfat_socketbufsize;
             flags.reportStats = cfg.ejfat_reportstats;
@@ -120,26 +139,49 @@ public:
         }()),
         uri(cfg.ejfat_uri, e2sar::EjfatURI::TokenType::instance, cfg.ejfat_useIPv6),
         ip(ip::make_address(cfg.inurl)),
-        reassembler(new e2sar::Reassembler(uri, ip, 10000, cfg.ejfat_recvthreads, reassembler_flags)) {
+        reassembler(new e2sar::Reassembler(
+            uri, ip, cfg.ejfat_starting_port, cfg.ejfat_recvthreads, reassembler_flags)) {
             // Register worker with LB if using a CP
             auto regres = reassembler->registerWorker(cfg.inurl);
             if (regres.has_error()) {
-                std::cerr << "Error, failed to register worker with LB: " << regres.error().message() << std::endl;
+                std::cerr << "Error, failed to register worker with LB: "
+                          << regres.error().message() << std::endl;
                 std::exit(1);
             }
             auto openres = reassembler->openAndStart();
             if (openres.has_error()) {
-                std::cerr << "Error, failed to start reassembler: " << openres.error().message() << std::endl;
+                std::cerr << "Error, failed to start reassembler: "
+                          << openres.error().message() << std::endl;
                 std::exit(1);
             }
-            std::cout << "E2SAR Reassembler started successfully" << std::endl;
+            std::cout << "E2SAR Reassembler started successfully on: "
+                      << reassembler->get_dataIP() << std::endl;
+            std::cout << "Receiving on ports:                        "
+                      << reassembler->get_recvPorts().first << ":"
+                      << reassembler->get_recvPorts().second << std::endl;
         };
     int receive(zmq_msg_t* msg, void* socket) override;
+    e2sar::Reassembler* getReassembler() const { return reassembler; }
 private:
     e2sar::Reassembler::ReassemblerFlags reassembler_flags;
     e2sar::EjfatURI uri;
     ip::address ip;
     e2sar::Reassembler* reassembler;
+};
+
+class EJFatReassemblerStatWorker : public ThreadWorker {
+public:
+    EJFatReassemblerStatWorker(
+        void* ctx,
+        const Config& cfg,
+        e2sar::Reassembler* reassembler,
+        std::atomic<bool>& shutdown_signal
+    ) : ThreadWorker(ctx, cfg), reassembler(reassembler), shutdown_signal(shutdown_signal) {};
+    void run() override;
+private:
+    e2sar::Reassembler* reassembler;
+protected:
+    std::atomic<bool>& shutdown_signal;
 };
 
 class SenderLockFreeWorker : public LockFreeWorker {

@@ -20,9 +20,12 @@ CacheServer::CacheServer(Config &config, std::atomic<bool>& shutdown_signal)
     }
     std::cout << "Verbose:           " << cfg.verbose << std::endl;
 
-    std::cout << "\n----- Metrics config ----- " << std::endl;
-    std::cout << "Interval:          " << cfg.metrics_interval << std::endl;
-    std::cout << "Cache ID:          " << cfg.metrics_cache_id << std::endl;
+    if (cfg.metrics) {
+        std::cout << "\n----- Metrics config ----- " << std::endl;
+        std::cout << "URL:               " << cfg.metrics_url << std::endl;
+        std::cout << "Interval:          " << cfg.metrics_interval << std::endl;
+        std::cout << "Cache ID:          " << cfg.metrics_cache_id << std::endl;
+    }
 
     if (cfg.type == RunType::ZMQPULLinEJFatOut ||
         cfg.type == RunType::TestInEJFatOut) {
@@ -41,12 +44,14 @@ CacheServer::CacheServer(Config &config, std::atomic<bool>& shutdown_signal)
         cfg.type == RunType::EJFatInZMQREPOut ||
         cfg.type == RunType::EJFatInZMQROUTEROut ) {
         std::cout << "\n----- EJFat receiver config -----" << std::endl;
-        std::cout << "Use LB:                 " << cfg.ejfat_useLB << std::endl;
-        std::cout << "Send buffer size:       " << cfg.ejfat_socketbufsize << std::endl;
-        std::cout << "Report stats to LB:     " << cfg.ejfat_reportstats << std::endl;
-        std::cout << "Receiver threads:       " << cfg.ejfat_recvthreads << std::endl;
-        //std::cout << "Reading threads:        " << cfg.ejfat_readthreads << std::endl;
-        std::cout << "Timeout for reassembly: " << cfg.ejfat_eventtimeoutms << std::endl;
+        std::cout << "Use LB:                        " << cfg.ejfat_useLB << std::endl;
+        std::cout << "Send buffer size:              " << cfg.ejfat_socketbufsize << std::endl;
+        std::cout << "Report stats to LB:            " << cfg.ejfat_reportstats << std::endl;
+        std::cout << "Receiver threads:              " << cfg.ejfat_recvthreads << std::endl;
+        //std::cout << "Reading threads:              " << cfg.ejfat_readthreads << std::endl;
+        std::cout << "Timeout for reassembly:        " << cfg.ejfat_eventtimeoutms << std::endl;
+        std::cout << "Send state thread period (ms): " << cfg.ejfat_period_ms << std::endl;
+        std::cout << "Starting port:                 " << cfg.ejfat_starting_port << std::endl;
     }
 }
 
@@ -64,7 +69,7 @@ CacheServer::~CacheServer() {
 
 void CacheServer::run() {
     // Main thread managing workers and reporting queue depth for lock-free modes.
-    workers = create(cfg, zmq_ctx);
+    workers = WorkerFactory::createWorkers(zmq_ctx, cfg, queue, shutdown_signal);
     threads.reserve(workers.size());
 
     for (auto& worker: workers) {
@@ -93,117 +98,4 @@ void CacheServer::run() {
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
-}
-
-std::vector<std::unique_ptr<ThreadWorker>> CacheServer::create(Config& cfg, void* zmq_ctx) {
-    std::vector<std::unique_ptr<ThreadWorker>> workerlist;
-    switch (cfg.type) {
-        case RunType::Simple:
-        case RunType::Proxy:
-            // 1 thread that is doing IN and OUT with proxy or simple
-            workerlist.push_back(std::make_unique<ProxyWorker>(
-                zmq_ctx, cfg, static_cast<int>(cfg.type)));
-            break;
-        case RunType::BindInproc:
-        case RunType::ConnectInproc: {
-            bool bindoutgoing = false;
-            if (static_cast<int>(cfg.type) == 2) {
-                cfg.helper_threads = 0; // Just to be sure (w bind out no extra workers)
-                bindoutgoing = true;
-            }
-            // receiver worker first! Inproc bind has to happen first
-            workerlist.push_back(std::make_unique<InprocWorker>(
-                zmq_ctx, cfg, false, bindoutgoing));
-            for (ssize_t i=0; i<cfg.helper_threads+1; i++) {
-                workerlist.push_back(std::make_unique<InprocWorker>(
-                    zmq_ctx, cfg, true, bindoutgoing));
-            }
-            break;
-        }
-        case RunType::LockFreePush:
-            // receiver:
-            workerlist.push_back(std::make_unique<ReceiverLockFreeWorker>(
-                zmq_ctx, cfg, queue, shutdown_signal));
-            // sender:
-            workerlist.push_back(std::make_unique<SenderLockFreeWorker>(
-                zmq_ctx, cfg, queue, shutdown_signal));
-            break;
-        case RunType::LockFreeDealer:
-            // receiver:
-            workerlist.push_back(std::make_unique<ReceiverLockFreeWorker>(
-                zmq_ctx, cfg, queue, shutdown_signal));
-            // sender:
-            workerlist.push_back(std::make_unique<RouterSenderLockFreeWorker>(
-                zmq_ctx, cfg, queue, shutdown_signal));
-            break;
-        case RunType::LockFreeReply:
-            // receiver:
-            workerlist.push_back(std::make_unique<ReceiverLockFreeWorker>(
-                zmq_ctx, cfg, queue, shutdown_signal));
-            // sender:
-            workerlist.push_back(std::make_unique<ReplySenderLockFreeWorker>(
-                zmq_ctx, cfg, queue, shutdown_signal));
-            break;
-        case RunType::TestIn:
-            workerlist.push_back(std::make_unique<SinkLockFreeWorker>(
-                zmq_ctx, cfg, queue, shutdown_signal));
-            break;
-        case RunType::TestOut:
-            // receiver:
-            //for (int i=0; i<cfg.datasim_threads; ++i) {
-            workerlist.push_back(std::make_unique<QueueGeneratorLockFreeWorker>(
-                    zmq_ctx, cfg, queue, shutdown_signal));
-            //}
-            // sender:
-            workerlist.push_back(std::make_unique<SenderLockFreeWorker>(
-                zmq_ctx, cfg, queue, shutdown_signal));
-            break;
-        case RunType::ZMQPULLinEJFatOut:
-            // receiver:
-            workerlist.push_back(std::make_unique<ReceiverLockFreeWorker>(
-                zmq_ctx, cfg, queue, shutdown_signal));
-            // sender:
-            workerlist.push_back(std::make_unique<EJFatSenderLockFreeWorker>(
-                zmq_ctx, cfg, queue, shutdown_signal));
-            break;
-        case RunType::TestInEJFatOut:
-            // receiver:
-            //for (int i=0; i<cfg.dataSimulatorThreads; ++i) {
-            workerlist.push_back(std::make_unique<QueueGeneratorLockFreeWorker>(
-                    zmq_ctx, cfg, queue, shutdown_signal));
-            //}
-            // sender:
-            workerlist.push_back(std::make_unique<EJFatSenderLockFreeWorker>(
-                zmq_ctx, cfg, queue, shutdown_signal));
-            break;
-        case RunType::EJFatInZMQPUSHOut:
-            // receiver:
-            workerlist.push_back(std::make_unique<EJFatReceiverLockFreeWorker>(
-                zmq_ctx, cfg, queue, shutdown_signal));
-            // sender:
-            workerlist.push_back(std::make_unique<SenderLockFreeWorker>(
-                zmq_ctx, cfg, queue, shutdown_signal));
-            break;
-        case RunType::EJFatInZMQREPOut:
-            // receiver:
-            workerlist.push_back(std::make_unique<EJFatReceiverLockFreeWorker>(
-                zmq_ctx, cfg, queue, shutdown_signal));
-            // sender:
-            workerlist.push_back(std::make_unique<ReplySenderLockFreeWorker>(
-                zmq_ctx, cfg, queue, shutdown_signal));
-            break;
-        case RunType::EJFatInZMQROUTEROut:
-            // receiver:
-            workerlist.push_back(std::make_unique<EJFatReceiverLockFreeWorker>(
-                zmq_ctx, cfg, queue, shutdown_signal));
-            // sender:
-            workerlist.push_back(std::make_unique<RouterSenderLockFreeWorker>(
-                zmq_ctx, cfg, queue, shutdown_signal));
-            break;
-
-        default:
-            break;
-    }
-
-    return workerlist;
 }
