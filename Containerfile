@@ -38,7 +38,7 @@ RUN apt-get -yq update && \
         libre2-dev \
         wget \
         ca-certificates && \
-    pip3 install --break-system-packages pybind11 meson && \
+    pip3 install --break-system-packages --no-cache-dir pybind11 meson && \
     wget -q -O boost_grpc.deb ${E2SAR_DEPS_DEB_URL} && \
     dpkg -i ./boost_grpc.deb && \
     rm -f ./boost_grpc.deb && \
@@ -60,10 +60,11 @@ RUN git config --global url."https://github.com/".insteadOf "git@github.com:" &&
     git clone --recurse-submodules https://github.com/JeffersonLab/E2SAR.git && cd E2SAR && \
     git checkout 55b7337802f4cf0d1ec5a93d2b38059a5c6bd937 && \
     PATH=$HOME/.local/bin:/usr/local/bin:$PATH BOOST_ROOT=/usr/local/ LD_LIBRARY_PATH=${LD_LIBRARY_PATH} CXXFLAGS="-fpermissive" \
-    meson setup --libdir=lib64 -Dpkg_config_path=${PKG_CONFIG_PATH} --prefix ${E2SARINSTALL} build && \
+    meson setup --libdir=lib64 -Dpkg_config_path=${PKG_CONFIG_PATH} --prefix ${E2SARINSTALL} --buildtype=release --strip build && \
     sed -i 's/-std=c++11//g' build/build.ninja && \
     meson compile -C build -j 2 && \
-    meson install -C build
+    meson install -C build && \
+    rm -rf /src/E2SAR/build
 
 
 # Stage 3: 'compile-fastcache' Download and build fastcache using vcpkg
@@ -79,9 +80,10 @@ RUN apt-get -yq update && \
         python3 \
         python3-pip \
         liburing-dev && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* && \
     git clone --filter=blob:none https://github.com/microsoft/vcpkg /opt/vcpkg \
     && /opt/vcpkg/bootstrap-vcpkg.sh -disableMetrics && \
-    git clone --branch feature/ejfat_worker --single-branch https://github.com/lclstream/fastcache.git /build
+    git clone --depth 1 --branch feature/ejfat_worker --single-branch https://github.com/lclstream/fastcache.git /build
 ENV VCPKG_ROOT=/opt/vcpkg
 WORKDIR /build
 
@@ -95,10 +97,24 @@ RUN --mount=type=cache,target=/root/.cache/vcpkg \
 # Stage 4: 'runtime' Final runtime setup of env vars and copy runtime libs
 
 FROM ubuntu:24.04 AS runtime
+
+ARG E2SARINSTALL
+ENV E2SARINSTALL=${E2SARINSTALL}
+
+RUN apt-get -yq update && \
+    apt-get -yq install --no-install-recommends \
+        libre2-10 \
+        openssl \
+        libabsl20220623t64 \
+        liburing2 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+    
 COPY --from=compile-e2sar $E2SARINSTALL $E2SARINSTALL
 COPY --from=compile-e2sar /usr/local/lib/libgrpc* /usr/local/lib/
 COPY --from=compile-e2sar /usr/local/lib/libprotobuf* /usr/local/lib/
 COPY --from=compile-e2sar /usr/local/lib/ /usr/local/lib/
+COPY --from=compile-e2sar /usr/share/grpc /usr/share/grpc
 ENV LD_LIBRARY_PATH=/usr/local/lib:$E2SARINSTALL/lib64:$LD_LIBRARY_PATH
 ENV PATH=$E2SARINSTALL/bin:$PATH
 COPY --from=compile-fastcache /build/build/lclstream-fastcache /usr/local/bin/lclstream-fastcache

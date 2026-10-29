@@ -3,6 +3,132 @@
 #include <zmq.h>
 #include "threadworker.h"
 
+e2sar::Reassembler* WorkerFactory::addEJFatReceiver(
+    std::vector<std::unique_ptr<ThreadWorker>>& workerlist,
+    void* zmq_ctx,
+    const Config& cfg,
+    MessageQueue& queue,
+    std::atomic<bool>& shutdown_signal)
+{
+    auto receiver = std::make_unique<EJFatReceiverLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal);
+    auto* reassembler = receiver->getReassembler();
+    workerlist.push_back(std::move(receiver));
+    return reassembler;
+}
+
+std::vector<std::unique_ptr<ThreadWorker>> WorkerFactory::createWorkers(
+    void* zmq_ctx,
+    const Config& cfg,
+    MessageQueue& queue,
+    std::atomic<bool>& shutdown_signal) {
+
+    std::vector<std::unique_ptr<ThreadWorker>> workerlist;
+
+    switch (cfg.type) {
+        case RunType::Simple:
+        case RunType::Proxy:
+            // 1 thread that is doing IN and OUT with proxy or simple
+            workerlist.push_back(std::make_unique<ProxyWorker>(
+                zmq_ctx, cfg, static_cast<int>(cfg.type)));
+            break;
+        case RunType::BindInproc:
+        case RunType::ConnectInproc: {
+            bool bindoutgoing = false;
+            if (static_cast<int>(cfg.type) == 2) {
+                bindoutgoing = true;
+            }
+            // receiver worker first! Inproc bind has to happen first
+            workerlist.push_back(std::make_unique<InprocWorker>(
+                zmq_ctx, cfg, false, bindoutgoing));
+            for (ssize_t i=0; i<cfg.helper_threads+1; i++) {
+                workerlist.push_back(std::make_unique<InprocWorker>(
+                    zmq_ctx, cfg, true, bindoutgoing));
+            }
+            break;
+        }
+        case RunType::LockFreePush:
+            workerlist.push_back(
+                std::make_unique<ReceiverLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            workerlist.push_back(
+                std::make_unique<SenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            break;
+        case RunType::LockFreeDealer:
+            workerlist.push_back(
+                std::make_unique<ReceiverLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            workerlist.push_back(
+                std::make_unique<RouterSenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            break;
+        case RunType::LockFreeReply:
+            workerlist.push_back(
+                std::make_unique<ReceiverLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            workerlist.push_back(
+                std::make_unique<ReplySenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            break;
+        case RunType::TestIn:
+            workerlist.push_back(
+                std::make_unique<SinkLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            break;
+        case RunType::TestOut:
+            //for (int i=0; i<cfg.datasim_threads; ++i) {
+            workerlist.push_back(
+                std::make_unique<QueueGeneratorLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            //}
+            workerlist.push_back(
+                std::make_unique<SenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            break;
+        case RunType::ZMQPULLinEJFatOut:
+            workerlist.push_back(
+                std::make_unique<ReceiverLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            workerlist.push_back(
+                std::make_unique<EJFatSenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            break;
+        case RunType::TestInEJFatOut:
+            //for (int i=0; i<cfg.dataSimulatorThreads; ++i) {
+            workerlist.push_back(
+                std::make_unique<QueueGeneratorLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            //}
+            workerlist.push_back(
+                std::make_unique<EJFatSenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            break;
+        case RunType::EJFatInZMQPUSHOut: {
+            e2sar::Reassembler* reassembler = addEJFatReceiver(
+                workerlist, zmq_ctx, cfg, queue, shutdown_signal);
+            workerlist.push_back(
+                std::make_unique<SenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            if (cfg.verbose) {
+                workerlist.push_back(
+                    std::make_unique<EJFatReassemblerStatWorker>(zmq_ctx, cfg, reassembler, shutdown_signal));
+            }
+            break;
+        }
+        case RunType::EJFatInZMQREPOut: {
+            e2sar::Reassembler* reassembler = addEJFatReceiver(
+                workerlist, zmq_ctx, cfg, queue, shutdown_signal);
+            workerlist.push_back(
+                std::make_unique<ReplySenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            if (cfg.verbose) {
+                workerlist.push_back(
+                    std::make_unique<EJFatReassemblerStatWorker>(zmq_ctx, cfg, reassembler, shutdown_signal));
+            }
+            break;
+        }
+        case RunType::EJFatInZMQROUTEROut: {
+            e2sar::Reassembler* reassembler = addEJFatReceiver(
+                workerlist, zmq_ctx, cfg, queue, shutdown_signal);
+            workerlist.push_back(
+                std::make_unique<RouterSenderLockFreeWorker>(zmq_ctx, cfg, queue, shutdown_signal));
+            if (cfg.verbose) {
+                workerlist.push_back(
+                    std::make_unique<EJFatReassemblerStatWorker>(zmq_ctx, cfg, reassembler, shutdown_signal));
+            }
+            break;
+        }
+        default:
+            std::cout << "Error: Unknown RunType" << std::endl;
+            std::exit(1);
+    }
+    return workerlist;
+}
 
 void* ThreadWorker::create_socket(void* ctx, const SocketConfig& socketcfg) {
     void* socket = zmq_socket(ctx, socketcfg.type);
@@ -94,6 +220,11 @@ void* LockFreeWorker::create_metrics_socket(std::string& metrics_path) {
     metrics_path = "/tmp/fastcache-metrics-" + role + "-" + std::to_string(cfg.metrics_cache_id);
     std::string sender_metrics_url = "ipc://" + metrics_path;
     return create_socket(zmq_ctx, {ZMQ_PUB, hwm, sender_metrics_url, true});
+}
+
+void* LockFreeWorker::create_metrics_socket() {
+    int hwm = 10000;
+    return create_socket(zmq_ctx, {ZMQ_PUSH, hwm, cfg.metrics_url, true});
 }
 
 std::string LockFreeWorker::create_metrics(uint64_t rc_count, uint64_t msg_count,
@@ -221,7 +352,8 @@ int EJFatSenderLockFreeWorker::send(void* /*socket*/, zmq_msg_t* msg) {
     uint8_t* event_data = reinterpret_cast<uint8_t*>(zmq_msg_data(msg));
     std::size_t event_len = zmq_msg_size(msg);
     while (1) {
-        auto send_result = segmenter->addToSendQueue(event_data, event_len, 0, 0, 0, EJFatSenderLockFreeWorker::free_msg, msg);
+        auto send_result = segmenter->addToSendQueue(event_data, event_len, 0, 0, 0, 
+                                                     EJFatSenderLockFreeWorker::free_msg, msg);
         if (!send_result.has_error()) {
             return static_cast<int>(event_len);
         } else {
@@ -250,8 +382,9 @@ void SenderLockFreeWorker::run() {
         }
     }
     if (cfg.metrics) {
-        // Note: with multiple senders this needs edited, TID added or something
-        metrics_socket = create_metrics_socket(metrics_path);
+        // Note for PUB: with multiple senders this needs edited, TID added or something
+        //metrics_socket = create_metrics_socket(metrics_path); // PUB
+        metrics_socket = create_metrics_socket(); // PUSH
     }
     while (1) {
         if (socket_type == ZMQ_REP || socket_type == ZMQ_ROUTER) {
@@ -326,7 +459,8 @@ void ReceiverLockFreeWorker::run() {
         zmq_setsockopt(socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
     }
     if (cfg.metrics) {
-        metrics_socket = create_metrics_socket(metrics_path);
+        //metrics_socket = create_metrics_socket(metrics_path); // PUB
+        metrics_socket = create_metrics_socket(); // PUSH
     }
     bool started_work = false;
     while (1) {
@@ -426,7 +560,7 @@ void SinkLockFreeWorker::run() {
     uint64_t total_bytes = 0;
     auto last_print_time = std::chrono::steady_clock::now();
 
-    while (true) {
+    while (1) {
         zmq_msg_t msg;
         zmq_msg_init(&msg);
 
@@ -438,7 +572,8 @@ void SinkLockFreeWorker::run() {
                 if (shutdown_signal.load(std::memory_order_acquire)) break;
                 if (!started_work) continue;
                 if (timeout > 0) {
-                    std::cout << "No messages for " << static_cast<double>(timeout)/1000 << " seconds. Exiting." << std::endl;
+                    std::cout << "No messages for " << static_cast<double>(timeout)/1000 
+                              << " seconds. Exiting." << std::endl;
                 }
             } else {
                 std::cerr << "Error " << zmq_strerror(err) << " closing threads." << std::endl;
@@ -450,7 +585,8 @@ void SinkLockFreeWorker::run() {
         started_work = true;
         total_bytes += rc;
         auto now = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_print_time).count();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                now - last_print_time).count();
 
         if (elapsed >= 1000) {
             double seconds = elapsed / 1000.0;
@@ -466,4 +602,25 @@ void SinkLockFreeWorker::run() {
         }
     }
   zmq_close(socket);
+}
+
+void EJFatReassemblerStatWorker::run() {
+    while(1) {
+        auto stats = reassembler->getStats();
+        std::cout << "Stats:" << std::endl;
+        std::cout << "\tTotal Bytes: " << stats.totalBytes << std::endl;
+        std::cout << "\tTotal Packets: " << stats.totalPackets << std::endl;
+        std::cout << "\tBad RE Header Discards: " << stats.badHeaderDiscards << std::endl;
+        std::cout << "\tEvents Received: " << stats.eventSuccess << std::endl;
+        std::cout << "\tEvents Lost in reassembly: " << stats.reassemblyLoss << std::endl;
+        std::cout << "\tEvents Lost in enqueue: " << stats.enqueueLoss << std::endl;
+        std::cout << "\tData Errors: " << stats.dataErrCnt << std::endl;
+        if (stats.dataErrCnt > 0)
+            std::cout << "\tLast Data Error: " << strerror(stats.lastErrno) << std::endl;
+        std::cout << "\tgRPC Errors: " << stats.grpcErrCnt << std::endl << std::endl;
+        if (shutdown_signal.load(std::memory_order_acquire)) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
 }
