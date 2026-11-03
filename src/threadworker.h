@@ -29,7 +29,7 @@ enum class Action { Continue, Break, Resume };
 class ThreadWorker {
 public:
     ThreadWorker(void* zmq_ctx, const Config& config)
-        : zmq_ctx(zmq_ctx), cfg(config) {};
+        : zmq_ctx(zmq_ctx), cfg(config) {}
     virtual ~ThreadWorker() = default;
     virtual void run() = 0;
 
@@ -63,7 +63,7 @@ private:
 class ProxyWorker : public ThreadWorker {
 public:
     ProxyWorker(void* ctx, const Config& cfg, bool proxy)
-        : ThreadWorker(ctx, cfg), proxy(proxy) {};
+        : ThreadWorker(ctx, cfg), proxy(proxy) {}
     void run() override;
 private:
     bool proxy;
@@ -72,7 +72,7 @@ private:
 class InprocWorker : public ThreadWorker {
 public:
     InprocWorker(void* ctx, const Config& cfg, bool sender, bool bindoutgoing)
-        : ThreadWorker(ctx, cfg), sender(sender), bindoutgoing(bindoutgoing) {};
+        : ThreadWorker(ctx, cfg), sender(sender), bindoutgoing(bindoutgoing) {}
     void run() override;
 private:
     bool sender;
@@ -90,7 +90,7 @@ public:
     ) : ThreadWorker(ctx, cfg), shutdown_signal(shutdown_signal),
                                 sender(sender),
                                 queue(queue),
-                                timeout(cfg.timeout) {};
+                                timeout(cfg.timeout) {}
     //void run() override;
 protected:
     std::atomic<bool>& shutdown_signal;
@@ -113,7 +113,7 @@ public:
         MessageQueue& queue,
         std::atomic<bool>& shutdown_signal,
         int socket_type = ZMQ_PULL
-    ) : LockFreeWorker(ctx, cfg, queue, false, shutdown_signal), socket_type(socket_type) {};
+    ) : LockFreeWorker(ctx, cfg, queue, false, shutdown_signal), socket_type(socket_type) {}
     void run() override;
     virtual int receive(zmq_msg_t* msg, void* socket);
 protected:
@@ -159,7 +159,7 @@ public:
             std::cout << "Receiving on ports:                        "
                       << reassembler->get_recvPorts().first << ":"
                       << reassembler->get_recvPorts().second << std::endl;
-        };
+        }
     int receive(zmq_msg_t* msg, void* socket) override;
     e2sar::Reassembler* getReassembler() const { return reassembler; }
 private:
@@ -176,7 +176,7 @@ public:
         const Config& cfg,
         e2sar::Reassembler* reassembler,
         std::atomic<bool>& shutdown_signal
-    ) : ThreadWorker(ctx, cfg), reassembler(reassembler), shutdown_signal(shutdown_signal) {};
+    ) : ThreadWorker(ctx, cfg), reassembler(reassembler), shutdown_signal(shutdown_signal) {}
     void run() override;
 private:
     e2sar::Reassembler* reassembler;
@@ -192,7 +192,7 @@ public:
         MessageQueue& queue,
         std::atomic<bool>& shutdown_signal,
         int socket_type = ZMQ_PUSH
-    ) : LockFreeWorker(ctx, cfg, queue, true, shutdown_signal), socket_type(socket_type) {};
+    ) : LockFreeWorker(ctx, cfg, queue, true, shutdown_signal), socket_type(socket_type) {}
     void run() override;
     virtual Action receive(void* socket);
     virtual int send(void* socket, zmq_msg_t* msg);
@@ -209,7 +209,7 @@ public:
         const Config& cfg,
         MessageQueue& queue,
         std::atomic<bool>& shutdown_signal
-    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown_signal, ZMQ_ROUTER) {};
+    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown_signal, ZMQ_ROUTER) {}
     ~RouterSenderLockFreeWorker() {
         zmq_msg_close(&id);
     }
@@ -226,7 +226,7 @@ public:
         const Config& cfg,
         MessageQueue& queue,
         std::atomic<bool>& shutdown_signal
-    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown_signal, ZMQ_REP) {};
+    ) : SenderLockFreeWorker(ctx, cfg, queue, shutdown_signal, ZMQ_REP) {}
     Action receive(void* socket) override;
 };
 
@@ -251,6 +251,28 @@ public:
         }()),
         uri(cfg.ejfat_uri, e2sar::EjfatURI::TokenType::instance, cfg.ejfat_useIPv6),
         segmenter(new e2sar::Segmenter(uri, cfg.ejfat_dataId, 0x00000001, segmenter_flags)) {
+            if (segmenter_flags.useCP) {
+                std::cout << "Adding myself to LB." << std::endl;
+                lbMan = std::make_unique<e2sar::LBManager>(uri, true, true);
+                if (cfg.ejfat_autoIP) {
+                    std::cout << "Auto detecting own IP..." << std::endl;
+                    auto res = lbMan->addSenderSelf();
+                    if (res.has_error()) {
+                        std::cerr << "Unable to add a auto-detected sender IP address, error: "
+                                  << res.error().message() << std::endl;
+                        std::exit(1);
+                    }
+                } else {
+                    std::cout << "Using IP given in the config: "<< cfg.ejfat_senderIP << std::endl;
+                    senders.emplace_back(cfg.ejfat_senderIP);
+                    auto res = lbMan->addSenders(senders);
+                    if (res.has_error()) {
+                        std::cerr << "Unable to add a sender, error " 
+                                  << res.error().message() << std::endl;
+                        std::exit(1);
+                    }
+                }
+            }
             //std::vector<std::string> optimizations{"sendmmsg"};
             //auto ropt = e2sar::Optimizations::select(optimizations);
             //if (ropt.has_error()) {
@@ -264,7 +286,29 @@ public:
                std::exit(1);
             }
             std::cout << "E2SAR Segmenter started successfully" << std::endl;
-        };
+        }
+
+        ~EJFatSenderLockFreeWorker() {
+        if (segmenter != nullptr) {
+            if (lbMan != nullptr) {
+                std::cout << "Removing sender(s) from LB... ";
+                if (!senders.empty()) {
+                    auto res = lbMan->removeSenders(senders);
+                    if (res.has_error()) {
+                        std::cerr << "Error when removing sender on exit "
+                                  << res.error().message() << std::endl;
+                    }
+                } else {
+                    auto res = lbMan->removeSenderSelf();
+                    if (res.has_error()) {
+                        std::cerr << "Error when removing myself from sender list: "
+                                  << res.error().message() << std::endl;
+                    }
+                }
+                std::cout << "Done!" << std::endl;
+            }
+        }
+    }
     int send(void* socket, zmq_msg_t* msg) override;
 protected:
     static void free_msg(boost::any arg);
@@ -272,6 +316,8 @@ private:
     e2sar::Segmenter::SegmenterFlags segmenter_flags;
     e2sar::EjfatURI uri;
     e2sar::Segmenter* segmenter;
+    std::unique_ptr<e2sar::LBManager> lbMan;
+    std::vector<std::string> senders;
     //std::unique_ptr<e2sar::Segmenter> segmenter;
 };
 
@@ -282,7 +328,7 @@ public:
         const Config& cfg,
         MessageQueue& queue,
         std::atomic<bool>& shutdown_signal
-    ) : LockFreeWorker(ctx, cfg, queue, false, shutdown_signal) {};
+    ) : LockFreeWorker(ctx, cfg, queue, false, shutdown_signal) {}
     void run() override;
 };
 
@@ -293,7 +339,7 @@ public:
         const Config& cfg,
         MessageQueue& queue,
         std::atomic<bool>& shutdown_signal
-    ) : LockFreeWorker(ctx, cfg, queue, true, shutdown_signal) {};
+    ) : LockFreeWorker(ctx, cfg, queue, true, shutdown_signal) {}
     void run() override;
 };
 

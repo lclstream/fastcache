@@ -67,6 +67,8 @@ struct Config
     size_t ejfat_numSendSockets;                 // Sender: ejfat send sockets
     uint16_t ejfat_dataId;                       // Sender: data id (note: might want to have this loop at some point)
     uint16_t ejfat_queueSize;                    // Sender: ejfat internal lockfree queue size
+    bool ejfat_autoIP;                           // Sender: try to find own ip address automatically
+    std::string ejfat_senderIP;                  // Sender: if autoIP fails ip can be provided via this
     bool ejfat_reportstats = true;               // Receiver: report ejfat stats back to LB
     size_t ejfat_recvthreads;                    // Receiver: number of ejfat reassembler threads
     int ejfat_eventtimeoutms;                    // Receiver: Timeout for event reassembly (ms)

@@ -98,23 +98,46 @@ RUN --mount=type=cache,target=/root/.cache/vcpkg \
 
 FROM ubuntu:24.04 AS runtime
 
+ARG E2SAR_DEPS_DEB_URL
 ARG E2SARINSTALL
 ENV E2SARINSTALL=${E2SARINSTALL}
 
+ENV LD_LIBRARY_PATH=/usr/local/lib
+ENV PATH=${E2SARINSTALL}/bin:/usr/local/bin:$PATH
+
 RUN apt-get -yq update && \
     apt-get -yq install --no-install-recommends \
-        libre2-10 \
+        python3 \
+        python3-pip \
+        ca-certificates \
+        wget \
+        libglib2.0-0 \
         openssl \
-        libabsl20220623t64 \
-        liburing2 && \
+        libssl3 \
+        libsystemd0 \
+        libre2-10 \
+        liburing2 \
+        libprotobuf32 \
+        netcat-traditional \
+        net-tools \
+        bc \
+        ethtool \
+        iproute2 \
+        iputils-ping \
+        gdb && \
+    pip3 install --break-system-packages scapy && \
+    wget -q -O boost_grpc.deb ${E2SAR_DEPS_DEB_URL} && \
+    dpkg -i ./boost_grpc.deb && \
+    rm -f ./boost_grpc.deb && \
+    apt-get purge -y wget && \
+    apt-get autoremove -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-COPY --from=compile-e2sar $E2SARINSTALL $E2SARINSTALL
-COPY --from=compile-e2sar /usr/local/lib/libgrpc* /usr/local/lib/
-COPY --from=compile-e2sar /usr/local/lib/libprotobuf* /usr/local/lib/
-COPY --from=compile-e2sar /usr/local/lib/ /usr/local/lib/
-COPY --from=compile-e2sar /usr/share/grpc /usr/share/grpc
+COPY --from=compile-e2sar $E2SARINSTALL/bin $E2SARINSTALL/bin
+COPY --from=compile-e2sar $E2SARINSTALL/lib $E2SARINSTALL/lib
+COPY --from=compile-e2sar $E2SARINSTALL/include $E2SARINSTALL/include
+
 ENV LD_LIBRARY_PATH=/usr/local/lib:$E2SARINSTALL/lib64:$LD_LIBRARY_PATH
 ENV PATH=$E2SARINSTALL/bin:$PATH
 COPY --from=compile-fastcache /build/build/lclstream-fastcache /usr/local/bin/lclstream-fastcache

@@ -45,6 +45,8 @@ void load_config(const std::string& fname, Config& cfg) {
     cfg.ejfat_numSendSockets = ejfat_opts.value("num_sendsockets", 8);
     cfg.ejfat_dataId = ejfat_opts.value("data_id", 1);
     cfg.ejfat_queueSize = ejfat_opts.value("queuesize", 40);
+    cfg.ejfat_autoIP = ejfat_opts.value("autoip", true);
+    cfg.ejfat_senderIP = ejfat_opts.value("senderip", "");
     cfg.ejfat_reportstats = ejfat_opts.value("reportstats", true);
     cfg.ejfat_recvthreads = ejfat_opts.value("recvthreads", 1);
     cfg.ejfat_eventtimeoutms = ejfat_opts.value("eventtimeoutms", 500);
@@ -91,5 +93,19 @@ void load_config(const std::string& fname, Config& cfg) {
     if (cfg.metrics && cfg.metrics_url == "") {
         std::cerr << "Metrics URL can't be empty string if metrics are enabled." << std::endl;
         std::exit(1);
+    }
+
+    if (!cfg.ejfat_autoIP &&
+       (cfg.type == RunType::ZMQPULLinEJFatOut ||
+        cfg.type == RunType::TestInEJFatOut)) {
+
+        struct in_addr addr4;
+        struct in6_addr addr6;
+        bool is_ipv4 = (inet_pton(AF_INET, cfg.ejfat_senderIP.c_str(), &addr4) == 1);
+        bool is_ipv6 = (inet_pton(AF_INET6, cfg.ejfat_senderIP.c_str(), &addr6) == 1);
+        if (!is_ipv4 && !is_ipv6) {
+            std::cerr << "Error: 'senderIP' for EJFAT sender must be IPv4 or IPv6 address." << std::endl;
+            std::exit(1);
+        }
     }
 }
