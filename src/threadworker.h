@@ -139,8 +139,11 @@ public:
         }()),
         uri(cfg.ejfat_uri, e2sar::EjfatURI::TokenType::instance, cfg.ejfat_useIPv6),
         ip(ip::make_address(cfg.inurl)),
-        reassembler(new e2sar::Reassembler(
-            uri, ip, cfg.ejfat_starting_port, cfg.ejfat_recvthreads, reassembler_flags)) {
+        reassembler(cfg.ejfat_autoIP
+            ? new e2sar::Reassembler(
+                uri, cfg.ejfat_starting_port, cfg.ejfat_recvthreads, reassembler_flags, cfg.ejfat_useIPv6)
+            : new e2sar::Reassembler(
+                uri, ip, cfg.ejfat_starting_port, cfg.ejfat_recvthreads, reassembler_flags)) {
             // Register worker with LB if using a CP
             auto regres = reassembler->registerWorker(cfg.inurl);
             if (regres.has_error()) {
